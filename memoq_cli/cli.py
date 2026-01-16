@@ -88,8 +88,8 @@ cli.add_command(tb)
               help="RSAPI port", type=int)
 @click.option("--rsapi-path", default="memoqserverhttpapi/v1", prompt="RSAPI path",
               help="RSAPI API path")
-@click.option("--api-key", prompt="API Key", hide_input=True, confirmation_prompt=True,
-              help="API Key")
+@click.option("--api-key", prompt="API Key",
+              help="API Key for authentication")
 @click.option("--output", "-o", default="config.json", help="Output config file path")
 def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, output):
     """Initialize configuration file
@@ -133,9 +133,10 @@ def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, output):
 
     click.echo(f"\nDone: Config file created at {config_path.absolute()}")
     click.echo(f"\nSummary:")
-    click.echo(f"   Server: {host}")
-    click.echo(f"   WSAPI:  {host}:{wsapi_port}")
-    click.echo(f"   RSAPI:  {host}:{rsapi_port}/{rsapi_path}")
+    click.echo(f"   Server:  {host}")
+    click.echo(f"   WSAPI:   {host}:{wsapi_port}")
+    click.echo(f"   RSAPI:   {host}:{rsapi_port}/{rsapi_path}")
+    click.echo(f"   API Key: {api_key}")
     click.echo(f"\nTip: Edit the config file to modify settings")
 
 

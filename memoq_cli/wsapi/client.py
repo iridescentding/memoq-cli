@@ -6,7 +6,10 @@ memoQ CLI - WSAPI Client Base Class
 from typing import Optional, Dict, Any
 from zeep import Client
 from zeep.transports import Transport
+from zeep.plugins import HistoryPlugin
 from requests import Session
+from lxml import etree
+from lxml.etree import QName
 
 from ..config import get_config
 from ..utils import get_logger
@@ -23,11 +26,44 @@ WSAPI_SERVICES = {
 }
 
 
+class APIKeyPlugin:
+    """
+    Zeep plugin to add API Key to SOAP Header (without namespace).
+
+    This is the correct way to authenticate with memoQ WSAPI.
+    The API key is added as a simple <ApiKey> element in the SOAP header.
+    """
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    def egress(self, envelope, http_headers, operation, binding_options):
+        """Add ApiKey element to SOAP Header before sending request."""
+        SOAP_NS = 'http://schemas.xmlsoap.org/soap/envelope/'
+
+        # Get or create SOAP Header
+        header = envelope.find(f'{{{SOAP_NS}}}Header')
+        if header is None:
+            header = etree.Element(f'{{{SOAP_NS}}}Header')
+            envelope.insert(0, header)
+
+        # Add ApiKey element without namespace
+        api_key_elem = etree.SubElement(header, QName(None, 'ApiKey'))
+        api_key_elem.text = self.api_key
+
+        return envelope, http_headers
+
+    def ingress(self, envelope, http_headers, operation):
+        """Process response (no-op)."""
+        return envelope, http_headers
+
+
 class WSAPIClient:
     """
     memoQ WSAPI (SOAP) Client Base Class
 
     Provides connection management and authentication for memoQ SOAP services.
+    Uses APIKeyPlugin to add API key to SOAP headers.
     """
 
     def __init__(
@@ -63,6 +99,12 @@ class WSAPIClient:
         # Session for HTTP requests
         self._session = Session()
         self._session.verify = verify_ssl
+
+        # Plugins for SOAP client
+        self._plugins = [
+            HistoryPlugin(),
+            APIKeyPlugin(self._api_key)
+        ]
 
     @property
     def base_url(self) -> str:
@@ -103,32 +145,15 @@ class WSAPIClient:
             operation_timeout=self._timeout
         )
 
-        client = Client(wsdl_url, transport=transport)
+        # Create client with API key plugin
+        client = Client(
+            wsdl_url,
+            transport=transport,
+            plugins=self._plugins
+        )
         self._clients[service_name] = client
 
         return client
-
-    def _get_auth_header(self) -> Any:
-        """
-        Create authentication SOAP header.
-
-        Returns:
-            SOAP header element with API key
-        """
-        # Get client to access types (use any service)
-        if "ServerProject" not in self._clients:
-            self.get_client("ServerProject")
-
-        client = self._clients.get("ServerProject") or list(self._clients.values())[0]
-
-        # Create authentication header type
-        try:
-            header_type = client.get_type("ns0:ApiKeyAuth")
-            return header_type(ApiKey=self._api_key)
-        except Exception:
-            # Fallback: try alternative header structure
-            header_type = client.get_type("{http://kilgray.com/memoqservices/2007}ApiKeyAuth")
-            return header_type(ApiKey=self._api_key)
 
     def close(self):
         """Close the session and clean up resources"""
