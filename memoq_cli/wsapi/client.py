@@ -72,7 +72,7 @@ class WSAPIClient:
         port: Optional[int] = None,
         api_key: Optional[str] = None,
         verify_ssl: bool = False,
-        timeout: int = 30
+        timeout: int = 300  # 5 minutes default for large file operations
     ):
         """
         Initialize WSAPI client.
@@ -99,6 +99,8 @@ class WSAPIClient:
         # Session for HTTP requests
         self._session = Session()
         self._session.verify = verify_ssl
+        # Bypass proxy for memoQ connections to avoid connection issues
+        self._session.trust_env = False
 
         # Plugins for SOAP client
         self._plugins = [

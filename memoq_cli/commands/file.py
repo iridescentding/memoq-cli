@@ -141,27 +141,21 @@ def file_download(ctx, project_guid, document_guid, output, export_format, overw
 
 @file.command("import-xliff")
 @click.argument("project_guid")
-@click.argument("document_guid")
 @click.option("--path", "-p", required=True, type=click.Path(exists=True),
-              help="XLIFF file path")
-@click.option("--confirm-level", "-c",
-              type=click.Choice(["None", "Confirmed", "Reviewed", "Proofread"]),
-              default="Confirmed", help="Confirmation level")
+              help="XLIFF/mqxliff file path")
 @click.pass_context
-def file_import_xliff(ctx, project_guid, document_guid, path, confirm_level):
-    """Import XLIFF to update a document"""
+def file_import_xliff(ctx, project_guid, path):
+    """Import XLIFF/mqxliff to update a document"""
     fm = FileManager()
 
     click.echo(f"\nImport XLIFF")
-    click.echo(f"   File:    {path}")
-    click.echo(f"   Project: {project_guid}")
-    click.echo(f"   Document: {document_guid}")
-    click.echo(f"   Level:   {confirm_level}")
+    click.echo(f"   File:     {path}")
+    click.echo(f"   Project:  {project_guid}")
     click.echo()
 
     try:
         click.echo("Importing...")
-        result = fm.import_xliff(path, project_guid, document_guid)
+        result = fm.import_xliff(path, project_guid)
         click.echo("\nDone: XLIFF import successful!")
 
         if ctx.obj.get("verbose"):

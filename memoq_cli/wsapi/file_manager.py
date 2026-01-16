@@ -3,6 +3,7 @@
 memoQ CLI - File Manager Module
 
 Handles file upload/download operations via WSAPI.
+Uses chunked upload for reliable file transfer.
 """
 
 import os
@@ -14,7 +15,7 @@ from zeep.exceptions import Fault
 from zeep.helpers import serialize_object
 
 from .client import WSAPIClient
-from ..utils import get_logger, get_files_from_directory, filter_files
+from ..utils import get_logger, is_system_file
 
 
 class FileManager(WSAPIClient):
@@ -24,6 +25,142 @@ class FileManager(WSAPIClient):
         super().__init__(**kwargs)
         self.logger = get_logger("wsapi.file")
 
+    def upload_file_chunked(
+        self,
+        file_path: str,
+        file_name: Optional[str] = None,
+        chunk_size: int = 1024 * 1024
+    ) -> Optional[str]:
+        """
+        Upload file using chunked upload to FileManager service.
+
+        Args:
+            file_path: Path to the file
+            file_name: Optional file name (defaults to basename)
+            chunk_size: Chunk size in bytes (default 1MB)
+
+        Returns:
+            Upload session ID (file GUID) on success, None on failure
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        client = self.get_client("FileManager")
+        file_name = file_name or os.path.basename(file_path)
+
+        try:
+            # Check if it's a ZIP file
+            is_zip = file_name.lower().endswith('.zip')
+
+            # 1. Begin chunked upload session
+            self.logger.debug(f"Starting upload session: {file_name}, isZipped={is_zip}")
+            upload_session_id = client.service.BeginChunkedFileUpload(
+                fileName=file_name,
+                isZipped=is_zip
+            )
+            self.logger.debug(f"Upload session ID: {upload_session_id}")
+
+            # 2. Upload file in chunks
+            with open(file_path, 'rb') as f:
+                chunk_index = 0
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+
+                    client.service.AddNextFileChunk(
+                        fileIdAndSessionId=upload_session_id,
+                        fileData=chunk
+                    )
+                    chunk_index += 1
+
+            # 3. End upload session
+            client.service.EndChunkedFileUpload(upload_session_id)
+            self.logger.info(f"Upload complete: {file_name} ({chunk_index} chunks)")
+            return str(upload_session_id)
+
+        except Fault as e:
+            self.logger.error(f"SOAP Fault during upload: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Upload failed: {e}")
+            return None
+
+    def import_document_to_project(
+        self,
+        file_guid: str,
+        project_guid: str,
+        target_languages: List[str],
+        import_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Import an uploaded file into a project.
+
+        Args:
+            file_guid: File GUID from upload
+            project_guid: Target project GUID
+            target_languages: List of target language codes
+            import_path: Optional path within project
+
+        Returns:
+            Import result
+        """
+        # Clear cached clients and create fresh session to avoid stale connections
+        # This is important after large file uploads
+        self._clients.clear()
+        self._session.close()
+        from requests import Session
+        self._session = Session()
+        self._session.verify = self._verify_ssl
+        self._session.trust_env = False  # Bypass proxy
+
+        client = self.get_client("ServerProject")
+
+        try:
+            # Get types
+            ImportOptionsType = client.get_type(
+                '{http://kilgray.com/memoqservices/2007}ImportTranslationDocumentOptions'
+            )
+            ArrayImportOptionsType = client.get_type(
+                '{http://kilgray.com/memoqservices/2007}ArrayOfImportTranslationDocumentOptions'
+            )
+
+            # Build import options
+            kwargs = {
+                'FileGuid': file_guid,
+                'TargetLangCodes': {'string': list(target_languages)},
+            }
+            if import_path:
+                kwargs['PathToSetAsImportPath'] = import_path
+
+            item = ImportOptionsType(**kwargs)
+            import_options_array = ArrayImportOptionsType([item])
+
+            # Call import
+            results = client.service.ImportTranslationDocumentsWithOptions(
+                serverProjectGuid=project_guid,
+                importDocOptions=import_options_array
+            )
+
+            if results:
+                result = results[0]
+                result_dict = serialize_object(result) or {}
+
+                # Check for errors
+                if hasattr(result, 'ErrorMessage') and result.ErrorMessage:
+                    self.logger.error(f"Import error: {result.ErrorMessage}")
+                    result_dict['error'] = result.ErrorMessage
+                else:
+                    self.logger.info(f"Document imported successfully")
+
+                return result_dict
+
+            return {"status": "no_result"}
+
+        except Fault as e:
+            self.logger.error(f"Import failed: {e}")
+            raise
+
     def upload_file(
         self,
         file_path: str,
@@ -31,7 +168,7 @@ class FileManager(WSAPIClient):
         target_languages: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Upload a single file to a project.
+        Upload a single file to a project (chunked upload + import).
 
         Args:
             file_path: Path to the file
@@ -44,148 +181,86 @@ class FileManager(WSAPIClient):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        client = self.get_client("FileManager")
-        header = self._get_auth_header()
-
         file_name = os.path.basename(file_path)
         self.logger.info(f"Uploading file: {file_name}")
 
-        with open(file_path, "rb") as f:
-            file_data = f.read()
+        # Step 1: Upload file to FileManager
+        file_guid = self.upload_file_chunked(file_path, file_name)
+        if not file_guid:
+            raise RuntimeError(f"Failed to upload file: {file_name}")
 
-        try:
-            # Create import options
-            import_options_type = client.get_type("ns0:ImportDocumentOptions")
-            import_options = import_options_type(
-                TargetLangCodes=target_languages or []
-            )
-
-            result = client.service.ImportDocument(
-                _soapheaders=[header],
-                serverProjectGuid=project_guid,
-                fileName=file_name,
-                fileContent=file_data,
-                importOptions=import_options
-            )
-
-            return serialize_object(result) or {"status": "success", "file": file_name}
-
-        except Fault as e:
-            self.logger.error(f"Upload failed: {e}")
-            raise
-
-    def upload_zip(
-        self,
-        zip_path: str,
-        project_guid: str,
-        preserve_structure: bool = True,
-        target_languages: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """
-        Upload a ZIP archive to a project.
-
-        Args:
-            zip_path: Path to the ZIP file
-            project_guid: Target project GUID
-            preserve_structure: Whether to preserve directory structure
-            target_languages: Optional list of target language codes
-
-        Returns:
-            Upload result information
-        """
-        if not os.path.exists(zip_path):
-            raise FileNotFoundError(f"ZIP file not found: {zip_path}")
-
-        client = self.get_client("FileManager")
-        header = self._get_auth_header()
-
-        self.logger.info(f"Uploading ZIP: {zip_path}")
-
-        with open(zip_path, "rb") as f:
-            zip_data = f.read()
-
-        try:
-            import_options_type = client.get_type("ns0:ImportDocumentOptions")
-            import_options = import_options_type(
-                TargetLangCodes=target_languages or [],
-                PreserveDirectoryStructure=preserve_structure
-            )
-
-            result = client.service.ImportDocumentFromZip(
-                _soapheaders=[header],
-                serverProjectGuid=project_guid,
-                zipContent=zip_data,
-                importOptions=import_options
-            )
-
-            return serialize_object(result) or {"status": "success"}
-
-        except Fault as e:
-            self.logger.error(f"ZIP upload failed: {e}")
-            raise
-
-    def upload_directory(
-        self,
-        directory: str,
-        project_guid: str,
-        target_languages: Optional[List[str]] = None,
-        filter_system_files: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Upload all files from a directory to a project.
-
-        Creates a temporary ZIP and uploads it.
-
-        Args:
-            directory: Path to the directory
-            project_guid: Target project GUID
-            target_languages: Optional list of target language codes
-            filter_system_files: Whether to filter out system files
-
-        Returns:
-            Upload result information
-        """
-        if not os.path.isdir(directory):
-            raise NotADirectoryError(f"Directory not found: {directory}")
-
-        # Get files from directory
-        files = get_files_from_directory(
-            directory,
-            recursive=True,
-            filter_system=filter_system_files
+        # Step 2: Import into project
+        target_langs = target_languages or ['eng']
+        result = self.import_document_to_project(
+            file_guid=file_guid,
+            project_guid=project_guid,
+            target_languages=target_langs
         )
 
-        if not files:
-            raise ValueError(f"No files found in directory: {directory}")
+        result['file_name'] = file_name
+        result['file_guid'] = file_guid
+        return result
 
-        self.logger.info(f"Creating ZIP from {len(files)} files in {directory}")
+    def download_file_chunked(
+        self,
+        file_guid: str,
+        output_path: str,
+        chunk_size: int = 1024 * 1024
+    ) -> str:
+        """
+        Download file using chunked download from FileManager service.
 
-        # Create temporary ZIP
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-            tmp_path = tmp.name
+        Args:
+            file_guid: File GUID to download
+            output_path: Output file path
+            chunk_size: Chunk size in bytes (default 1MB)
+
+        Returns:
+            Path to the downloaded file
+        """
+        client = self.get_client("FileManager")
 
         try:
-            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                base_dir = Path(directory)
-                for file_path in files:
-                    arcname = Path(file_path).relative_to(base_dir)
-                    zf.write(file_path, arcname)
-
-            # Upload the ZIP
-            result = self.upload_zip(
-                tmp_path,
-                project_guid,
-                preserve_structure=True,
-                target_languages=target_languages
+            # 1. Begin chunked download session
+            self.logger.debug(f"Starting download session: {file_guid}")
+            download_info = client.service.BeginChunkedFileDownload(
+                fileGuid=file_guid,
+                zip=False
             )
 
-            result["files_count"] = len(files)
-            return result
+            # Extract session ID from response
+            session_id = download_info.BeginChunkedFileDownloadResult
+            file_name = download_info.fileName
+            file_size = download_info.fileSize
+            self.logger.debug(f"Download session: {session_id}, file: {file_name}, size: {file_size}")
 
-        finally:
-            # Clean up temp file
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            # 2. Download file in chunks
+            os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+            with open(output_path, 'wb') as f:
+                chunk_index = 0
+                while True:
+                    chunk = client.service.GetNextFileChunk(
+                        sessionId=session_id,
+                        byteCount=chunk_size
+                    )
+
+                    if not chunk:
+                        break
+
+                    f.write(chunk)
+                    chunk_index += 1
+
+            # 3. End download session
+            client.service.EndChunkedFileDownload(sessionId=session_id)
+            self.logger.info(f"Download complete: {output_path} ({chunk_index} chunks)")
+            return output_path
+
+        except Fault as e:
+            self.logger.error(f"SOAP Fault during download: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Download failed: {e}")
+            raise
 
     def download_document(
         self,
@@ -206,32 +281,33 @@ class FileManager(WSAPIClient):
         Returns:
             Path to the downloaded file
         """
-        client = self.get_client("FileManager")
-        header = self._get_auth_header()
+        client = self.get_client("ServerProject")
 
         self.logger.info(f"Downloading document: {document_guid}")
 
         try:
             if export_format == "xliff":
-                result = client.service.ExportDocumentAsXliff(
-                    _soapheaders=[header],
+                # Export as XLIFF bilingual
+                result = client.service.ExportTranslationDocumentAsXliffBilingual(
                     serverProjectGuid=project_guid,
-                    documentGuid=document_guid
+                    docGuid=document_guid  # API uses docGuid
                 )
             else:
-                result = client.service.ExportTranslatedDocument(
-                    _soapheaders=[header],
+                # Export translated document
+                result = client.service.ExportTranslationDocument(
                     serverProjectGuid=project_guid,
-                    documentGuid=document_guid
+                    docGuid=document_guid  # API uses docGuid
                 )
 
-            # Write file content
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "wb") as f:
-                f.write(result)
-
-            self.logger.info(f"Downloaded to: {output_path}")
-            return output_path
+            # Result contains FileGuid - use chunked download
+            if result and hasattr(result, 'FileGuid') and result.FileGuid:
+                return self.download_file_chunked(
+                    str(result.FileGuid),
+                    output_path
+                )
+            else:
+                error_msg = getattr(result, 'MainMessage', 'Unknown error')
+                raise RuntimeError(f"Export failed: {error_msg}")
 
         except Fault as e:
             self.logger.error(f"Download failed: {e}")
@@ -286,18 +362,16 @@ class FileManager(WSAPIClient):
     def import_xliff(
         self,
         xliff_path: str,
-        project_guid: str,
-        document_guid: str,
-        confirm_level: str = "Confirmed"
+        project_guid: str
     ) -> Dict[str, Any]:
         """
-        Import XLIFF to update a document.
+        Import XLIFF/mqxliff to update a document.
+
+        Uses UpdateTranslationDocumentFromBilingual for mqxliff files.
 
         Args:
-            xliff_path: Path to XLIFF file
+            xliff_path: Path to XLIFF/mqxliff file
             project_guid: Project GUID
-            document_guid: Document GUID to update
-            confirm_level: Confirmation level
 
         Returns:
             Import result
@@ -305,24 +379,29 @@ class FileManager(WSAPIClient):
         if not os.path.exists(xliff_path):
             raise FileNotFoundError(f"XLIFF file not found: {xliff_path}")
 
-        client = self.get_client("FileManager")
-        header = self._get_auth_header()
-
         self.logger.info(f"Importing XLIFF: {xliff_path}")
 
-        with open(xliff_path, "rb") as f:
-            xliff_data = f.read()
+        # Step 1: Upload the XLIFF file
+        file_name = os.path.basename(xliff_path)
+        file_guid = self.upload_file_chunked(xliff_path, file_name)
+        if not file_guid:
+            raise RuntimeError(f"Failed to upload XLIFF: {file_name}")
+
+        # Step 2: Update document from bilingual
+        client = self.get_client("ServerProject")
 
         try:
-            result = client.service.ImportXliffDocument(
-                _soapheaders=[header],
+            # docFormat enum values: MBD, XLIFF, TwoColumnRTF, TableDOCX
+            # MQXLIFF files use 'XLIFF' format
+            result = client.service.UpdateTranslationDocumentFromBilingual(
                 serverProjectGuid=project_guid,
-                documentGuid=document_guid,
-                xliffContent=xliff_data,
-                confirmationLevel=confirm_level
+                fileGuid=file_guid,
+                docFormat='XLIFF'
             )
 
-            return serialize_object(result) or {"status": "success"}
+            result_dict = serialize_object(result) or {}
+            self.logger.info(f"XLIFF import complete")
+            return result_dict
 
         except Fault as e:
             self.logger.error(f"XLIFF import failed: {e}")
