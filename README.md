@@ -96,53 +96,58 @@ You should see: `memoq-cli, version 1.0.0`
 Run the setup wizard:
 
 ```bash
-.venv/bin/memoq init
+.venv/bin/python -m memoq_cli.cli init
 ```
 
 It will ask you for:
-- **Server host**: Your memoQ server URL (e.g., `https://memoq.company.com`)
-- **WSAPI port**: Usually `8080`
-- **RSAPI port**: Usually `443` or `28081`
+- **Server host**: Your memoQ server URL (e.g., `https://memoq.datalsp.com`)
+- **WSAPI port**: e.g., `8081`
+- **RSAPI port**: e.g., `8082`
 - **RSAPI path**: Usually `memoqserverhttpapi/v1`
 - **API Key**: Your secret key (will be hidden when typing)
 
 This creates a `config.json` file in your current folder.
 
+> **Note**: Due to path issues, it's recommended to use `python -m memoq_cli.cli` instead of `.venv/bin/memoq` directly.
+
 ### 2. Test the connection
 
 ```bash
-.venv/bin/memoq test
+.venv/bin/python -m memoq_cli.cli test
 ```
 
 If successful, you'll see:
 ```
 Connection Test
 
-WSAPI: https://memoq.company.com:8080/memoqservices
-  OK: WSAPI connected (5 projects)
-RSAPI: https://memoq.company.com:443/memoqserverhttpapi/v1
-  OK: RSAPI authenticated
+WSAPI: https://memoq.datalsp.com:8081/memoqservices
+  OK: WSDL loaded, services: ['ServerProjectService']
+RSAPI: https://memoq.datalsp.com:8082/memoqserverhttpapi/v1
+  OK: RSAPI reachable (HTTP 404)
 ```
 
 ### 3. List your projects
 
 ```bash
-.venv/bin/memoq project list
+.venv/bin/python -m memoq_cli.cli project list
 ```
 
 ### 4. Common tasks
 
 ```bash
+# Alias for convenience (add to your shell profile)
+alias memoq='.venv/bin/python -m memoq_cli.cli'
+
 # List translation memories
-.venv/bin/memoq tm list
+memoq tm list
 
 # List terminology bases
-.venv/bin/memoq tb list
+memoq tb list
 
 # Get help for any command
-.venv/bin/memoq --help
-.venv/bin/memoq project --help
-.venv/bin/memoq tm --help
+memoq --help
+memoq project --help
+memoq tm --help
 ```
 
 ---
@@ -315,16 +320,19 @@ memoq config --get server.host
 ```json
 {
     "server": {
-        "host": "https://memoq.company.com",
-        "wsapi_port": 8080,
-        "rsapi_port": 443,
-        "rsapi_path": "memoqserverhttpapi/v1"
+        "host": "https://memoq.datalsp.com",
+        "wsapi_port": 8081,
+        "rsapi_port": 8082,
+        "rsapi_base": "memoqserverhttpapi/v1"
     },
     "auth": {
-        "api_key": "your-api-key-here"
+        "api_key": "your-api-key-here",
+        "username": "",
+        "password": ""
     },
     "export": {
-        "default_path": "./exports"
+        "default_path": "./exports",
+        "xliff_version": "1.2"
     },
     "import": {
         "default_path": "./imports",
