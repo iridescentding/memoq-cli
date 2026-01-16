@@ -1,0 +1,33 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Egg info
+*.egg-info/
+*.egg
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+memoq_cli.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config with secrets (optional - uncomment if you have sensitive data)
+# config.json
