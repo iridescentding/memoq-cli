@@ -201,6 +201,114 @@ class FileManager(WSAPIClient):
         result['file_guid'] = file_guid
         return result
 
+    def upload_zip(
+        self,
+        zip_path: str,
+        project_guid: str,
+        preserve_structure: bool = True,
+        target_languages: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Upload a ZIP file to a project.
+
+        Args:
+            zip_path: Path to the ZIP file
+            project_guid: Target project GUID
+            preserve_structure: Whether to preserve directory structure
+            target_languages: Optional list of target language codes
+
+        Returns:
+            Upload result information
+        """
+        if not os.path.exists(zip_path):
+            raise FileNotFoundError(f"ZIP file not found: {zip_path}")
+
+        file_name = os.path.basename(zip_path)
+        self.logger.info(f"Uploading ZIP: {file_name}")
+
+        # Upload ZIP file (chunked upload handles isZipped=True automatically)
+        file_guid = self.upload_file_chunked(zip_path, file_name)
+        if not file_guid:
+            raise RuntimeError(f"Failed to upload ZIP: {file_name}")
+
+        # Import into project
+        target_langs = target_languages or ['eng']
+        result = self.import_document_to_project(
+            file_guid=file_guid,
+            project_guid=project_guid,
+            target_languages=target_langs
+        )
+
+        result['file_name'] = file_name
+        result['file_guid'] = file_guid
+        result['type'] = 'zip'
+        return result
+
+    def upload_directory(
+        self,
+        dir_path: str,
+        project_guid: str,
+        target_languages: Optional[List[str]] = None,
+        filter_system_files: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Package a directory as ZIP and upload to a project.
+
+        Args:
+            dir_path: Path to the directory
+            project_guid: Target project GUID
+            target_languages: Optional list of target language codes
+            filter_system_files: Whether to filter out system files
+
+        Returns:
+            Upload result information
+        """
+        if not os.path.isdir(dir_path):
+            raise NotADirectoryError(f"Not a directory: {dir_path}")
+
+        dir_name = os.path.basename(dir_path.rstrip('/\\'))
+        self.logger.info(f"Packaging directory: {dir_name}")
+
+        # Create temporary ZIP file
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+            tmp_zip_path = tmp.name
+
+        try:
+            # Create ZIP from directory
+            with zipfile.ZipFile(tmp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                file_count = 0
+                for root, dirs, files in os.walk(dir_path):
+                    # Filter hidden directories
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+                    for file in files:
+                        # Filter system files if requested
+                        if filter_system_files and is_system_file(file):
+                            continue
+
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, dir_path)
+                        zf.write(file_path, arcname)
+                        file_count += 1
+
+                self.logger.info(f"Packaged {file_count} files into ZIP")
+
+            # Upload the ZIP
+            result = self.upload_zip(
+                tmp_zip_path,
+                project_guid,
+                preserve_structure=True,
+                target_languages=target_languages
+            )
+            result['type'] = 'directory'
+            result['files_packaged'] = file_count
+            return result
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_zip_path):
+                os.unlink(tmp_zip_path)
+
     def download_file_chunked(
         self,
         file_guid: str,
