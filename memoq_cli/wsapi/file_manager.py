@@ -29,7 +29,8 @@ class FileManager(WSAPIClient):
         self,
         file_path: str,
         file_name: Optional[str] = None,
-        chunk_size: int = 1024 * 1024
+        chunk_size: int = 1024 * 1024,
+        unzip_on_server: bool = False
     ) -> Optional[str]:
         """
         Upload file using chunked upload to FileManager service.
@@ -38,6 +39,9 @@ class FileManager(WSAPIClient):
             file_path: Path to the file
             file_name: Optional file name (defaults to basename)
             chunk_size: Chunk size in bytes (default 1MB)
+            unzip_on_server: If True and file is ZIP, server will unzip after upload.
+                            Only works if ZIP contains exactly one file.
+                            For multi-file ZIPs, set to False and let import handle it.
 
         Returns:
             Upload session ID (file GUID) on success, None on failure
@@ -49,8 +53,10 @@ class FileManager(WSAPIClient):
         file_name = file_name or os.path.basename(file_path)
 
         try:
-            # Check if it's a ZIP file
-            is_zip = file_name.lower().endswith('.zip')
+            # isZipped parameter:
+            # - True: Server unzips the file after upload (ZIP must contain exactly 1 file)
+            # - False: File is uploaded as-is (use for multi-file ZIPs or non-ZIP files)
+            is_zip = file_name.lower().endswith('.zip') and unzip_on_server
 
             # 1. Begin chunked upload session
             self.logger.debug(f"Starting upload session: {file_name}, isZipped={is_zip}")
