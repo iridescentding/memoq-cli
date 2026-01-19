@@ -42,6 +42,7 @@ class ProjectManager(WSAPIClient):
             result = client.service.ListProjects(
                 filter=project_filter
             )
+            self.log_soap_debug("ListProjects")
 
             projects = serialize_object(result) or []
 
@@ -59,6 +60,7 @@ class ProjectManager(WSAPIClient):
             result = client.service.GetProject(
                 spGuid=project_guid  # API uses spGuid, not serverProjectGuid
             )
+            self.log_soap_debug("GetProject")
             return serialize_object(result) or {}
 
         except Fault as e:
@@ -77,6 +79,7 @@ class ProjectManager(WSAPIClient):
             result = client.service.ListProjectTranslationDocuments(
                 serverProjectGuid=project_guid
             )
+            self.log_soap_debug("ListProjectTranslationDocuments")
 
             documents = serialize_object(result) or []
 
@@ -121,6 +124,7 @@ class ProjectManager(WSAPIClient):
             result = client.service.GetProjectStatistics(
                 serverProjectGuid=project_guid
             )
+            self.log_soap_debug("GetProjectStatistics")
             return serialize_object(result) or {}
 
         except Fault as e:

@@ -58,6 +58,7 @@ class FileManager(WSAPIClient):
                 fileName=file_name,
                 isZipped=is_zip
             )
+            self.log_soap_debug("BeginChunkedFileUpload")
             self.logger.debug(f"Upload session ID: {upload_session_id}")
 
             # 2. Upload file in chunks
@@ -141,6 +142,7 @@ class FileManager(WSAPIClient):
                 serverProjectGuid=project_guid,
                 importDocOptions=import_options_array
             )
+            self.log_soap_debug("ImportTranslationDocumentsWithOptions")
 
             if results:
                 result = results[0]
@@ -335,6 +337,7 @@ class FileManager(WSAPIClient):
                 fileGuid=file_guid,
                 zip=False
             )
+            self.log_soap_debug("BeginChunkedFileDownload")
 
             # Extract session ID from response
             session_id = download_info.BeginChunkedFileDownloadResult
@@ -400,12 +403,14 @@ class FileManager(WSAPIClient):
                     serverProjectGuid=project_guid,
                     docGuid=document_guid  # API uses docGuid
                 )
+                self.log_soap_debug("ExportTranslationDocumentAsXliffBilingual")
             else:
                 # Export translated document
                 result = client.service.ExportTranslationDocument(
                     serverProjectGuid=project_guid,
                     docGuid=document_guid  # API uses docGuid
                 )
+                self.log_soap_debug("ExportTranslationDocument")
 
             # Result contains FileGuid - use chunked download
             if result and hasattr(result, 'FileGuid') and result.FileGuid:
@@ -506,6 +511,7 @@ class FileManager(WSAPIClient):
                 fileGuid=file_guid,
                 docFormat='XLIFF'
             )
+            self.log_soap_debug("UpdateTranslationDocumentFromBilingual")
 
             result_dict = serialize_object(result) or {}
             self.logger.info(f"XLIFF import complete")

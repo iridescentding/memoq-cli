@@ -20,9 +20,10 @@ from .commands import project, file, tm, tb
 @click.option("--config", "-c", type=click.Path(), help="Configuration file path")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output (DEBUG level)")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode (errors only)")
+@click.option("--soap-debug", is_flag=True, help="Log SOAP request/response XML for debugging")
 @click.version_option(version="1.0.0", prog_name="memoq-cli")
 @click.pass_context
-def cli(ctx, config, verbose, quiet):
+def cli(ctx, config, verbose, quiet, soap_debug):
     """memoQ CLI - memoQ Server command line tool
 
     Supports WSAPI and RSAPI for project management, file import/export,
@@ -67,9 +68,15 @@ def cli(ctx, config, verbose, quiet):
     log_file = getattr(cfg, 'log_file', None) if hasattr(cfg, 'log_file') else None
     setup_logging(level=log_level, log_file=log_file if log_file else None)
 
+    # Enable SOAP debug logging if requested
+    if soap_debug:
+        from .wsapi.client import set_soap_debug
+        set_soap_debug(True)
+
     ctx.obj["config"] = cfg
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
+    ctx.obj["soap_debug"] = soap_debug
 
 
 # Register command groups

@@ -25,6 +25,20 @@ WSAPI_SERVICES = {
     "TB": "tb?wsdl",
 }
 
+# Global flag for SOAP debug logging
+_soap_debug_enabled = False
+
+
+def set_soap_debug(enabled: bool):
+    """Enable or disable SOAP debug logging globally."""
+    global _soap_debug_enabled
+    _soap_debug_enabled = enabled
+
+
+def is_soap_debug_enabled() -> bool:
+    """Check if SOAP debug logging is enabled."""
+    return _soap_debug_enabled
+
 
 class APIKeyPlugin:
     """
@@ -103,8 +117,9 @@ class WSAPIClient:
         self._session.trust_env = False
 
         # Plugins for SOAP client
+        self._history = HistoryPlugin()
         self._plugins = [
-            HistoryPlugin(),
+            self._history,
             APIKeyPlugin(self._api_key)
         ]
 
@@ -156,6 +171,40 @@ class WSAPIClient:
         self._clients[service_name] = client
 
         return client
+
+    def log_soap_debug(self, operation_name: str = ""):
+        """
+        Log the last SOAP request and response if debug is enabled.
+
+        Args:
+            operation_name: Optional name of the operation for logging context
+        """
+        if not is_soap_debug_enabled():
+            return
+
+        soap_logger = get_logger("wsapi.soap")
+
+        try:
+            # Get last sent request
+            if self._history.last_sent:
+                request_xml = etree.tostring(
+                    self._history.last_sent["envelope"],
+                    pretty_print=True,
+                    encoding="unicode"
+                )
+                soap_logger.info(f"\n{'='*60}\nSOAP REQUEST{' - ' + operation_name if operation_name else ''}\n{'='*60}\n{request_xml}")
+
+            # Get last received response
+            if self._history.last_received:
+                response_xml = etree.tostring(
+                    self._history.last_received["envelope"],
+                    pretty_print=True,
+                    encoding="unicode"
+                )
+                soap_logger.info(f"\n{'='*60}\nSOAP RESPONSE{' - ' + operation_name if operation_name else ''}\n{'='*60}\n{response_xml}")
+
+        except Exception as e:
+            soap_logger.warning(f"Failed to log SOAP debug: {e}")
 
     def close(self):
         """Close the session and clean up resources"""
