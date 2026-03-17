@@ -296,7 +296,12 @@ def docs_userassign(ctx, as_json):
                 "Deadline(R2)": "",
             }
 
-            for assign_info in (doc_assign.get("Assignments") or []):
+            assignments_data = doc_assign.get("Assignments") or {}
+            if isinstance(assignments_data, dict):
+                assign_list = assignments_data.get("TranslationDocumentDetailedAssignmentInfo") or []
+            else:
+                assign_list = assignments_data
+            for assign_info in assign_list:
                 role_id = assign_info.get("RoleId", -1)
                 role_name = role_map.get(role_id)
                 if not role_name:
