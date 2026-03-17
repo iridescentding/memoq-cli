@@ -173,27 +173,71 @@ def docs_assign(ctx):
         selected_doc = docs[doc_choice - 1]
         doc_guid = selected_doc.get("DocumentGuid")
 
-        # Step 2: List users
-        users = pm.list_users(active_only=True)
-        if not users:
-            click.echo("No active users found")
-            return
+        # Step 2: List project users first, with option to add new user
+        project_users = pm.list_project_users(project_guid)
+        project_user_guids = set()
+        selectable_users = []
 
-        click.echo(f"\n  Available users ({len(users)}):")
-        for i, u in enumerate(users, 1):
-            full_name = u.get("FullName", u.get("UserName", "N/A"))
-            user_name = u.get("UserName", "")
-            click.echo(f"    {i}. {full_name:<30} ({user_name})")
+        if project_users:
+            click.echo(f"\n  Project members ({len(project_users)}):")
+            for i, pu in enumerate(project_users, 1):
+                user_info = pu.get("User", {})
+                full_name = user_info.get("FullName", "N/A")
+                user_name = user_info.get("UserName", "")
+                user_guid = str(user_info.get("UserGuid", ""))
+                project_user_guids.add(user_guid)
+                selectable_users.append(user_info)
+                click.echo(f"    {i}. {full_name:<30} ({user_name})")
+        else:
+            click.echo(f"\n  No members in this project yet.")
+
+        add_option = len(selectable_users) + 1
+        click.echo(f"    {add_option}. [+ Add user from server]")
 
         user_choice = click.prompt(
             "\n  Select user (enter number)",
-            type=click.IntRange(1, len(users))
+            type=click.IntRange(1, add_option)
         )
-        selected_user = users[user_choice - 1]
-        user_guid = str(selected_user.get("UserGuid"))
+
+        if user_choice == add_option:
+            # List all server users not already in the project
+            all_users = pm.list_users(active_only=True)
+            non_project_users = [
+                u for u in all_users
+                if str(u.get("UserGuid", "")) not in project_user_guids
+            ]
+
+            if not non_project_users:
+                click.echo("  All users are already in this project.")
+                return
+
+            click.echo(f"\n  Available users to add ({len(non_project_users)}):")
+            for i, u in enumerate(non_project_users, 1):
+                full_name = u.get("FullName", u.get("UserName", "N/A"))
+                user_name = u.get("UserName", "")
+                click.echo(f"    {i}. {full_name:<30} ({user_name})")
+
+            new_user_choice = click.prompt(
+                "\n  Select user to add (enter number)",
+                type=click.IntRange(1, len(non_project_users))
+            )
+            selected_user = non_project_users[new_user_choice - 1]
+            user_guid = str(selected_user.get("UserGuid"))
+
+            # Add user to project first
+            pm.set_project_users(
+                project_guid=project_guid,
+                user_infos=[{
+                    "UserGuid": user_guid,
+                    "ProjectRoles": {"ProjectManager": False, "Terminologist": False},
+                }]
+            )
+            click.echo(f"  ✓ Added {selected_user.get('FullName')} to project")
+        else:
+            selected_user = selectable_users[user_choice - 1]
+            user_guid = str(selected_user.get("UserGuid"))
 
         # Step 3: Select role
-        # DocumentAssignmentRole: 0=Translator, 1=Reviewer1, 2=Reviewer2
         roles = [
             ("Translator", 0),
             ("Reviewer 1", 1),
@@ -223,9 +267,10 @@ def docs_assign(ctx):
             return
 
         # Step 5: Confirm and execute
+        full_name = selected_user.get("FullName", selected_user.get("UserName", "N/A"))
         click.echo(f"\n  Assignment summary:")
         click.echo(f"    Document:  {selected_doc.get('DocumentName')}")
-        click.echo(f"    User:      {selected_user.get('FullName')}")
+        click.echo(f"    User:      {full_name}")
         click.echo(f"    Role:      {role_name}")
         click.echo(f"    Deadline:  {deadline_dt.strftime('%Y-%m-%d %H:%M')}")
 
@@ -241,7 +286,7 @@ def docs_assign(ctx):
             deadline=deadline_dt,
         )
 
-        click.echo(f"\n  ✓ Successfully assigned {selected_user.get('FullName')} "
+        click.echo(f"\n  ✓ Successfully assigned {full_name} "
                     f"as {role_name} to {selected_doc.get('DocumentName')} "
                     f"(deadline: {deadline_dt.strftime('%Y-%m-%d %H:%M')})")
 
@@ -405,34 +450,49 @@ def users_assign(ctx):
     try:
         pm = ProjectManager()
 
-        # Step 1: List users
-        users = pm.list_users(active_only=True)
-        if not users:
-            click.echo("No active users found")
+        # Show current project users
+        project_users = pm.list_project_users(project_guid)
+        project_user_guids = set()
+        if project_users:
+            click.echo(f"\n  Current project members ({len(project_users)}):")
+            for pu in project_users:
+                user_info = pu.get("User", {})
+                full_name = user_info.get("FullName", "N/A")
+                user_name = user_info.get("UserName", "")
+                roles = pu.get("ProjectRoles", {})
+                role_str = "PM" if roles.get("ProjectManager") else "Member"
+                project_user_guids.add(str(user_info.get("UserGuid", "")))
+                click.echo(f"    - {full_name:<30} ({user_name}) [{role_str}]")
+
+        # List users not yet in the project
+        all_users = pm.list_users(active_only=True)
+        non_project_users = [
+            u for u in all_users
+            if str(u.get("UserGuid", "")) not in project_user_guids
+        ]
+
+        if not non_project_users:
+            click.echo("\n  All users are already in this project.")
             return
 
-        click.echo(f"\n  Available users ({len(users)}):")
-        for i, u in enumerate(users, 1):
+        click.echo(f"\n  Users not in project ({len(non_project_users)}):")
+        for i, u in enumerate(non_project_users, 1):
             full_name = u.get("FullName", u.get("UserName", "N/A"))
             user_name = u.get("UserName", "")
             click.echo(f"    {i}. {full_name:<30} ({user_name})")
 
         user_choice = click.prompt(
-            "\n  Select user (enter number)",
-            type=click.IntRange(1, len(users))
+            "\n  Select user to add (enter number)",
+            type=click.IntRange(1, len(non_project_users))
         )
-        selected_user = users[user_choice - 1]
+        selected_user = non_project_users[user_choice - 1]
         user_guid = str(selected_user.get("UserGuid"))
 
         # Step 2: Select project role
         roles = [
-            ("Project Manager", "ProjectManager"),
-            ("Translator", "Translator"),
-            ("Reviewer 1", "Reviewer1"),
-            ("Reviewer 2", "Reviewer2"),
-            ("External Translator", "ExternalTranslator"),
-            ("External Reviewer 1", "ExternalReviewer1"),
-            ("External Reviewer 2", "ExternalReviewer2"),
+            ("Project Manager", {"ProjectManager": True, "Terminologist": False}),
+            ("Member", {"ProjectManager": False, "Terminologist": False}),
+            ("Terminologist", {"ProjectManager": False, "Terminologist": True}),
         ]
 
         click.echo(f"\n  Available project roles:")
@@ -454,14 +514,12 @@ def users_assign(ctx):
             click.echo("  Cancelled.")
             return
 
-        user_info = {
-            "UserGuid": user_guid,
-            "ProjectRoles": role_value,
-        }
-
         pm.set_project_users(
             project_guid=project_guid,
-            user_infos=[user_info]
+            user_infos=[{
+                "UserGuid": user_guid,
+                "ProjectRoles": role_value,
+            }]
         )
 
         click.echo(f"\n  ✓ Successfully assigned {selected_user.get('FullName')} "

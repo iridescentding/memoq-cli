@@ -252,6 +252,24 @@ class ProjectManager(WSAPIClient):
             self.logger.error(f"列出文档分配失败: {e}")
             raise
 
+    def list_project_users(
+        self,
+        project_guid: str,
+    ) -> List[Dict[str, Any]]:
+        """列出项目中的用户"""
+        client = self.get_client("ServerProject")
+
+        try:
+            result = client.service.ListProjectUsers(
+                serverProjectGuid=project_guid
+            )
+            self.log_soap_debug("ListProjectUsers")
+            return serialize_object(result) or []
+
+        except Fault as e:
+            self.logger.error(f"列出项目用户失败: {e}")
+            raise
+
     def set_project_users(
         self,
         project_guid: str,
@@ -261,18 +279,34 @@ class ProjectManager(WSAPIClient):
         client = self.get_client("ServerProject")
 
         try:
-            user_info_type = client.get_type(
-                "{http://kilgray.com/memoqservices/2007}"
-                "ServerProjectUserInfo"
+            ns = "{http://kilgray.com/memoqservices/2007}"
+
+            user_info_type = client.get_type(ns + "ServerProjectUserInfo")
+            roles_type = client.get_type(
+                "{http://schemas.datacontract.org/2004/07/MemoQServices}"
+                "ServerProjectRoles"
             )
+            array_type = client.get_type(ns + "ArrayOfServerProjectUserInfo")
 
             user_info_objects = []
             for info in user_infos:
-                user_info_objects.append(user_info_type(**info))
+                project_roles = info.get("ProjectRoles", {})
+                if isinstance(project_roles, dict):
+                    roles_obj = roles_type(**project_roles)
+                else:
+                    roles_obj = roles_type(ProjectManager=False, Terminologist=False)
+
+                user_info_objects.append(user_info_type(
+                    UserGuid=info["UserGuid"],
+                    ProjectRoles=roles_obj,
+                    PermForLicense=info.get("PermForLicense", True),
+                ))
+
+            users_array = array_type(ServerProjectUserInfo=user_info_objects)
 
             client.service.SetProjectUsers(
                 serverProjectGuid=project_guid,
-                userInfos=user_info_objects
+                userInfos=users_array,
             )
             self.log_soap_debug("SetProjectUsers")
 
