@@ -4,6 +4,7 @@ memoQ CLI - Project Commands
 """
 
 import sys
+from datetime import datetime, timedelta
 import click
 
 from ..wsapi import ProjectManager
@@ -209,11 +210,24 @@ def docs_assign(ctx):
         )
         role_name, role_id = roles[role_choice - 1]
 
-        # Step 4: Confirm and execute
+        # Step 4: Set deadline
+        default_deadline = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+        deadline_str = click.prompt(
+            f"\n  Deadline (YYYY-MM-DD)",
+            default=default_deadline,
+        )
+        try:
+            deadline_dt = datetime.strptime(deadline_str, "%Y-%m-%d").replace(hour=9, minute=0, second=0)
+        except ValueError:
+            click.echo("  Invalid date format. Use YYYY-MM-DD.")
+            return
+
+        # Step 5: Confirm and execute
         click.echo(f"\n  Assignment summary:")
         click.echo(f"    Document:  {selected_doc.get('DocumentName')}")
         click.echo(f"    User:      {selected_user.get('FullName')}")
         click.echo(f"    Role:      {role_name}")
+        click.echo(f"    Deadline:  {deadline_dt.strftime('%Y-%m-%d %H:%M')}")
 
         if not click.confirm("\n  Confirm assignment?", default=True):
             click.echo("  Cancelled.")
@@ -224,10 +238,120 @@ def docs_assign(ctx):
             document_guid=doc_guid,
             user_guid=user_guid,
             role=role_id,
+            deadline=deadline_dt,
         )
 
         click.echo(f"\n  ✓ Successfully assigned {selected_user.get('FullName')} "
-                    f"as {role_name} to {selected_doc.get('DocumentName')}")
+                    f"as {role_name} to {selected_doc.get('DocumentName')} "
+                    f"(deadline: {deadline_dt.strftime('%Y-%m-%d %H:%M')})")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+@project_docs.command("userassign")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def docs_userassign(ctx, as_json):
+    """List document user assignments in a table"""
+    project_guid = ctx.obj["project_guid"]
+
+    try:
+        pm = ProjectManager()
+
+        # Get documents for name lookup
+        docs = pm.list_project_documents(project_guid)
+        doc_name_map = {
+            str(d.get("DocumentGuid", "")): d.get("DocumentName", "Unknown")
+            for d in docs
+        }
+
+        # Get assignments
+        assignments = pm.list_translation_document_assignments(project_guid)
+
+        if as_json:
+            output_json(assignments)
+            return
+
+        if not assignments:
+            click.echo("No document assignments found")
+            return
+
+        role_map = {0: "Translator", 1: "Reviewer1", 2: "Reviewer2"}
+
+        # Build table data: one row per document
+        rows = []
+        for doc_assign in assignments:
+            doc_guid = str(doc_assign.get("DocumentGuid", ""))
+            doc_name = doc_name_map.get(doc_guid, doc_guid[:8] + "...")
+
+            row = {
+                "doc_guid": doc_guid,
+                "doc_name": doc_name,
+                "Translator": "",
+                "Deadline(T)": "",
+                "Reviewer1": "",
+                "Deadline(R1)": "",
+                "Reviewer2": "",
+                "Deadline(R2)": "",
+            }
+
+            for assign_info in (doc_assign.get("Assignments") or []):
+                role_id = assign_info.get("RoleId", -1)
+                role_name = role_map.get(role_id)
+                if not role_name:
+                    continue
+
+                deadline = assign_info.get("Deadline")
+                deadline_str = ""
+                if deadline:
+                    if hasattr(deadline, "strftime"):
+                        deadline_str = deadline.strftime("%Y-%m-%d %H:%M")
+                    else:
+                        deadline_str = str(deadline)[:16]
+
+                # Get user info from single user assignment
+                user = assign_info.get("User")
+                user_name = ""
+                if user:
+                    user_name = user.get("AssigneeName", "")
+
+                if role_name == "Translator":
+                    row["Translator"] = user_name
+                    row["Deadline(T)"] = deadline_str
+                elif role_name == "Reviewer1":
+                    row["Reviewer1"] = user_name
+                    row["Deadline(R1)"] = deadline_str
+                elif role_name == "Reviewer2":
+                    row["Reviewer2"] = user_name
+                    row["Deadline(R2)"] = deadline_str
+
+            rows.append(row)
+
+        # Print table
+        headers = [
+            ("Document", "doc_name", 28),
+            ("Translator", "Translator", 18),
+            ("Deadline(T)", "Deadline(T)", 18),
+            ("Reviewer1", "Reviewer1", 18),
+            ("Deadline(R1)", "Deadline(R1)", 18),
+            ("Reviewer2", "Reviewer2", 18),
+            ("Deadline(R2)", "Deadline(R2)", 18),
+        ]
+
+        # Header line
+        header_line = "  ".join(h.ljust(w) for h, _, w in headers)
+        click.echo(f"\n  {header_line}")
+        click.echo(f"  {'=' * len(header_line)}")
+
+        for row in rows:
+            line = "  ".join(
+                str(row.get(key, "")).ljust(w)
+                for _, key, w in headers
+            )
+            click.echo(f"  {line}")
+
+        click.echo()
 
     except Exception as e:
         handle_api_error(e, ctx.obj.get("verbose", False))

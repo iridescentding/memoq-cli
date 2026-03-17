@@ -3,6 +3,7 @@
 memoQ CLI - 项目管理模块
 """
 
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from zeep.exceptions import Fault
 from zeep.helpers import serialize_object
@@ -155,7 +156,7 @@ class ProjectManager(WSAPIClient):
         document_guid: str,
         user_guid: str,
         role: int,
-        deadline: Optional[str] = None,
+        deadline: datetime,
     ) -> None:
         """
         设置翻译文档用户分配
@@ -165,7 +166,7 @@ class ProjectManager(WSAPIClient):
             document_guid: 文档 GUID
             user_guid: 用户 GUID
             role: 角色 (0=Translator, 1=Reviewer1, 2=Reviewer2)
-            deadline: 可选的截止日期
+            deadline: 截止日期 (必填，DateTime 非空类型)
         """
         client = self.get_client("ServerProject")
 
@@ -182,14 +183,11 @@ class ProjectManager(WSAPIClient):
                 "TranslationDocumentUserRoleAssignment"
             )
 
-            role_kwargs = {
-                "UserGuid": user_guid,
-                "DocumentAssignmentRole": role,
-            }
-            if deadline:
-                role_kwargs["DeadLine"] = deadline
-
-            role_assignment = role_assignment_type(**role_kwargs)
+            role_assignment = role_assignment_type(
+                UserGuid=user_guid,
+                DocumentAssignmentRole=role,
+                DeadLine=deadline,
+            )
 
             doc_assignment = doc_assignment_type(
                 DocumentGuid=document_guid,
@@ -204,6 +202,43 @@ class ProjectManager(WSAPIClient):
 
         except Fault as e:
             self.logger.error(f"设置文档用户分配失败: {e}")
+            raise
+
+    def list_translation_document_assignments(
+        self,
+        project_guid: str,
+        document_guids: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        列出项目中翻译文档的分配情况
+
+        Args:
+            project_guid: 项目 GUID
+            document_guids: 可选的文档 GUID 列表，为 None 则列出所有文档
+        """
+        client = self.get_client("ServerProject")
+
+        try:
+            options_type = client.get_type(
+                "{http://kilgray.com/memoqservices/2007}"
+                "ListTranslationDocumentAssignmentsOptions"
+            )
+
+            options_kwargs = {}
+            if document_guids:
+                options_kwargs["DocumentGuids"] = document_guids
+
+            options = options_type(**options_kwargs)
+
+            result = client.service.ListTranslationDocumentAssignments(
+                serverProjectGuid=project_guid,
+                options=options,
+            )
+            self.log_soap_debug("ListTranslationDocumentAssignments")
+            return serialize_object(result) or []
+
+        except Fault as e:
+            self.logger.error(f"列出文档分配失败: {e}")
             raise
 
     def set_project_users(
