@@ -192,10 +192,11 @@ def docs_assign(ctx):
         user_guid = str(selected_user.get("UserGuid"))
 
         # Step 3: Select role
+        # DocumentAssignmentRole: 0=Translator, 1=Reviewer1, 2=Reviewer2
         roles = [
-            ("Translator", "translator"),
-            ("Reviewer 1", "reviewer1"),
-            ("Reviewer 2", "reviewer2"),
+            ("Translator", 0),
+            ("Reviewer 1", 1),
+            ("Reviewer 2", 2),
         ]
 
         click.echo(f"\n  Available roles:")
@@ -206,7 +207,7 @@ def docs_assign(ctx):
             "\n  Select role (enter number)",
             type=click.IntRange(1, len(roles))
         )
-        role_name, role_key = roles[role_choice - 1]
+        role_name, role_id = roles[role_choice - 1]
 
         # Step 4: Confirm and execute
         click.echo(f"\n  Assignment summary:")
@@ -218,18 +219,11 @@ def docs_assign(ctx):
             click.echo("  Cancelled.")
             return
 
-        kwargs = {}
-        if role_key == "translator":
-            kwargs["translator_user_guid"] = user_guid
-        elif role_key == "reviewer1":
-            kwargs["reviewer1_user_guid"] = user_guid
-        elif role_key == "reviewer2":
-            kwargs["reviewer2_user_guid"] = user_guid
-
         pm.set_project_translation_document_user_assignments(
             project_guid=project_guid,
             document_guid=doc_guid,
-            **kwargs
+            user_guid=user_guid,
+            role=role_id,
         )
 
         click.echo(f"\n  ✓ Successfully assigned {selected_user.get('FullName')} "

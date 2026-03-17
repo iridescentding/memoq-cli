@@ -153,32 +153,52 @@ class ProjectManager(WSAPIClient):
         self,
         project_guid: str,
         document_guid: str,
-        translator_user_guid: Optional[str] = None,
-        reviewer1_user_guid: Optional[str] = None,
-        reviewer2_user_guid: Optional[str] = None,
+        user_guid: str,
+        role: int,
+        deadline: Optional[str] = None,
     ) -> None:
-        """设置翻译文档用户分配"""
+        """
+        设置翻译文档用户分配
+
+        Args:
+            project_guid: 项目 GUID
+            document_guid: 文档 GUID
+            user_guid: 用户 GUID
+            role: 角色 (0=Translator, 1=Reviewer1, 2=Reviewer2)
+            deadline: 可选的截止日期
+        """
         client = self.get_client("ServerProject")
 
         try:
-            assignment_type = client.get_type(
+            # 外层类型: 每个文档的用户角色分配
+            doc_assignment_type = client.get_type(
                 "{http://kilgray.com/memoqservices/2007}"
                 "ServerProjectTranslationDocumentUserAssignments"
             )
 
-            assignment_kwargs = {"DocumentGuid": document_guid}
-            if translator_user_guid:
-                assignment_kwargs["TranslatorUserGuid"] = translator_user_guid
-            if reviewer1_user_guid:
-                assignment_kwargs["Reviewer1UserGuid"] = reviewer1_user_guid
-            if reviewer2_user_guid:
-                assignment_kwargs["Reviewer2UserGuid"] = reviewer2_user_guid
+            # 内层类型: 单个用户-角色分配
+            role_assignment_type = client.get_type(
+                "{http://kilgray.com/memoqservices/2007}"
+                "TranslationDocumentUserRoleAssignment"
+            )
 
-            assignment = assignment_type(**assignment_kwargs)
+            role_kwargs = {
+                "UserGuid": user_guid,
+                "DocumentAssignmentRole": role,
+            }
+            if deadline:
+                role_kwargs["DeadLine"] = deadline
+
+            role_assignment = role_assignment_type(**role_kwargs)
+
+            doc_assignment = doc_assignment_type(
+                DocumentGuid=document_guid,
+                UserRoleAssignments=[role_assignment]
+            )
 
             client.service.SetProjectTranslationDocumentUserAssignments(
                 serverProjectGuid=project_guid,
-                assignments=[assignment]
+                assignments=[doc_assignment]
             )
             self.log_soap_debug("SetProjectTranslationDocumentUserAssignments")
 
