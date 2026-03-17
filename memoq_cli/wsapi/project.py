@@ -171,16 +171,19 @@ class ProjectManager(WSAPIClient):
         client = self.get_client("ServerProject")
 
         try:
-            # 外层类型: 每个文档的用户角色分配
-            doc_assignment_type = client.get_type(
-                "{http://kilgray.com/memoqservices/2007}"
-                "ServerProjectTranslationDocumentUserAssignments"
-            )
+            ns = "{http://kilgray.com/memoqservices/2007}"
 
-            # 内层类型: 单个用户-角色分配
+            doc_assignment_type = client.get_type(
+                ns + "ServerProjectTranslationDocumentUserAssignments"
+            )
             role_assignment_type = client.get_type(
-                "{http://kilgray.com/memoqservices/2007}"
-                "TranslationDocumentUserRoleAssignment"
+                ns + "TranslationDocumentUserRoleAssignment"
+            )
+            array_role_type = client.get_type(
+                ns + "ArrayOfTranslationDocumentUserRoleAssignment"
+            )
+            array_doc_type = client.get_type(
+                ns + "ArrayOfServerProjectTranslationDocumentUserAssignments"
             )
 
             role_assignment = role_assignment_type(
@@ -189,14 +192,22 @@ class ProjectManager(WSAPIClient):
                 DeadLine=deadline,
             )
 
+            user_role_assignments = array_role_type(
+                TranslationDocumentUserRoleAssignment=[role_assignment]
+            )
+
             doc_assignment = doc_assignment_type(
                 DocumentGuid=document_guid,
-                UserRoleAssignments=[role_assignment]
+                UserRoleAssignments=user_role_assignments,
+            )
+
+            assignments_array = array_doc_type(
+                ServerProjectTranslationDocumentUserAssignments=[doc_assignment]
             )
 
             client.service.SetProjectTranslationDocumentUserAssignments(
                 serverProjectGuid=project_guid,
-                assignments=[doc_assignment]
+                assignments=assignments_array,
             )
             self.log_soap_debug("SetProjectTranslationDocumentUserAssignments")
 
