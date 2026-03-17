@@ -95,13 +95,19 @@ def project_info(ctx, project_guid, as_json):
         handle_api_error(e, ctx.obj.get("verbose", False))
 
 
-@project.command("docs")
+@project.group("docs", invoke_without_command=True)
 @click.argument("project_guid")
 @click.option("--status", "-s", is_flag=True, help="Show document status")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
 def project_docs(ctx, project_guid, status, as_json):
-    """List documents in a project"""
+    """List documents in a project, or manage document assignments"""
+    ctx.ensure_object(dict)
+    ctx.obj["project_guid"] = project_guid
+
+    if ctx.invoked_subcommand is not None:
+        return
+
     try:
         pm = ProjectManager()
 
@@ -133,6 +139,210 @@ def project_docs(ctx, project_guid, status, as_json):
             click.echo(f"     Words:   {word_count}")
             click.echo(f"     Target:  {target_lang}")
             click.echo()
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+@project_docs.command("assign")
+@click.pass_context
+def docs_assign(ctx):
+    """Assign a user to a translation document"""
+    project_guid = ctx.obj["project_guid"]
+
+    try:
+        pm = ProjectManager()
+
+        # Step 1: List documents
+        docs = pm.list_project_documents(project_guid)
+        if not docs:
+            click.echo("No documents in project")
+            return
+
+        click.echo(f"\n  Available documents ({len(docs)}):")
+        for i, doc in enumerate(docs, 1):
+            name = doc.get("DocumentName", "Unknown")
+            target_lang = doc.get("TargetLangCode", "")
+            click.echo(f"    {i}. {name} [{target_lang}]")
+
+        doc_choice = click.prompt(
+            "\n  Select document (enter number)",
+            type=click.IntRange(1, len(docs))
+        )
+        selected_doc = docs[doc_choice - 1]
+        doc_guid = selected_doc.get("DocumentGuid")
+
+        # Step 2: List users
+        users = pm.list_users(active_only=True)
+        if not users:
+            click.echo("No active users found")
+            return
+
+        click.echo(f"\n  Available users ({len(users)}):")
+        for i, u in enumerate(users, 1):
+            full_name = u.get("FullName", u.get("UserName", "N/A"))
+            user_name = u.get("UserName", "")
+            click.echo(f"    {i}. {full_name:<30} ({user_name})")
+
+        user_choice = click.prompt(
+            "\n  Select user (enter number)",
+            type=click.IntRange(1, len(users))
+        )
+        selected_user = users[user_choice - 1]
+        user_guid = str(selected_user.get("UserGuid"))
+
+        # Step 3: Select role
+        roles = [
+            ("Translator", "translator"),
+            ("Reviewer 1", "reviewer1"),
+            ("Reviewer 2", "reviewer2"),
+        ]
+
+        click.echo(f"\n  Available roles:")
+        for i, (role_name, _) in enumerate(roles, 1):
+            click.echo(f"    {i}. {role_name}")
+
+        role_choice = click.prompt(
+            "\n  Select role (enter number)",
+            type=click.IntRange(1, len(roles))
+        )
+        role_name, role_key = roles[role_choice - 1]
+
+        # Step 4: Confirm and execute
+        click.echo(f"\n  Assignment summary:")
+        click.echo(f"    Document:  {selected_doc.get('DocumentName')}")
+        click.echo(f"    User:      {selected_user.get('FullName')}")
+        click.echo(f"    Role:      {role_name}")
+
+        if not click.confirm("\n  Confirm assignment?", default=True):
+            click.echo("  Cancelled.")
+            return
+
+        kwargs = {}
+        if role_key == "translator":
+            kwargs["translator_user_guid"] = user_guid
+        elif role_key == "reviewer1":
+            kwargs["reviewer1_user_guid"] = user_guid
+        elif role_key == "reviewer2":
+            kwargs["reviewer2_user_guid"] = user_guid
+
+        pm.set_project_translation_document_user_assignments(
+            project_guid=project_guid,
+            document_guid=doc_guid,
+            **kwargs
+        )
+
+        click.echo(f"\n  ✓ Successfully assigned {selected_user.get('FullName')} "
+                    f"as {role_name} to {selected_doc.get('DocumentName')}")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+@project.group("users", invoke_without_command=True)
+@click.argument("project_guid")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def project_users(ctx, project_guid, as_json):
+    """List or manage project user assignments"""
+    ctx.ensure_object(dict)
+    ctx.obj["project_guid"] = project_guid
+
+    if ctx.invoked_subcommand is not None:
+        return
+
+    try:
+        pm = ProjectManager()
+        users = pm.list_users(active_only=True)
+
+        if as_json:
+            output_json(users)
+            return
+
+        if not users:
+            click.echo("No active users found")
+            return
+
+        click.echo(f"\n  Available users ({len(users)}):")
+        for i, u in enumerate(users, 1):
+            full_name = u.get("FullName", u.get("UserName", "N/A"))
+            user_name = u.get("UserName", "")
+            click.echo(f"    {i}. {full_name:<30} ({user_name})")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+@project_users.command("assign")
+@click.pass_context
+def users_assign(ctx):
+    """Assign a user to the project"""
+    project_guid = ctx.obj["project_guid"]
+
+    try:
+        pm = ProjectManager()
+
+        # Step 1: List users
+        users = pm.list_users(active_only=True)
+        if not users:
+            click.echo("No active users found")
+            return
+
+        click.echo(f"\n  Available users ({len(users)}):")
+        for i, u in enumerate(users, 1):
+            full_name = u.get("FullName", u.get("UserName", "N/A"))
+            user_name = u.get("UserName", "")
+            click.echo(f"    {i}. {full_name:<30} ({user_name})")
+
+        user_choice = click.prompt(
+            "\n  Select user (enter number)",
+            type=click.IntRange(1, len(users))
+        )
+        selected_user = users[user_choice - 1]
+        user_guid = str(selected_user.get("UserGuid"))
+
+        # Step 2: Select project role
+        roles = [
+            ("Project Manager", "ProjectManager"),
+            ("Translator", "Translator"),
+            ("Reviewer 1", "Reviewer1"),
+            ("Reviewer 2", "Reviewer2"),
+            ("External Translator", "ExternalTranslator"),
+            ("External Reviewer 1", "ExternalReviewer1"),
+            ("External Reviewer 2", "ExternalReviewer2"),
+        ]
+
+        click.echo(f"\n  Available project roles:")
+        for i, (role_name, _) in enumerate(roles, 1):
+            click.echo(f"    {i}. {role_name}")
+
+        role_choice = click.prompt(
+            "\n  Select role (enter number)",
+            type=click.IntRange(1, len(roles))
+        )
+        role_name, role_value = roles[role_choice - 1]
+
+        # Step 3: Confirm and execute
+        click.echo(f"\n  Assignment summary:")
+        click.echo(f"    User:  {selected_user.get('FullName')}")
+        click.echo(f"    Role:  {role_name}")
+
+        if not click.confirm("\n  Confirm assignment?", default=True):
+            click.echo("  Cancelled.")
+            return
+
+        user_info = {
+            "UserGuid": user_guid,
+            "ProjectRoles": role_value,
+        }
+
+        pm.set_project_users(
+            project_guid=project_guid,
+            user_infos=[user_info]
+        )
+
+        click.echo(f"\n  ✓ Successfully assigned {selected_user.get('FullName')} "
+                    f"as {role_name} to project")
 
     except Exception as e:
         handle_api_error(e, ctx.obj.get("verbose", False))

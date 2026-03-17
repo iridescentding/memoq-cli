@@ -130,3 +130,86 @@ class ProjectManager(WSAPIClient):
         except Fault as e:
             self.logger.error(f"获取项目统计失败: {e}")
             raise
+
+    def list_users(self, active_only: bool = True) -> List[Dict[str, Any]]:
+        """列出所有用户"""
+        client = self.get_client("Security")
+
+        try:
+            result = client.service.ListUsers()
+            self.log_soap_debug("ListUsers")
+            users = serialize_object(result) or []
+
+            if active_only:
+                users = [u for u in users if not u.get("IsDisabled", False)]
+
+            return users
+
+        except Fault as e:
+            self.logger.error(f"列出用户失败: {e}")
+            raise
+
+    def set_project_translation_document_user_assignments(
+        self,
+        project_guid: str,
+        document_guid: str,
+        translator_user_guid: Optional[str] = None,
+        reviewer1_user_guid: Optional[str] = None,
+        reviewer2_user_guid: Optional[str] = None,
+    ) -> None:
+        """设置翻译文档用户分配"""
+        client = self.get_client("ServerProject")
+
+        try:
+            assignment_type = client.get_type(
+                "{http://kilgray.com/memoqservices/2007}"
+                "ServerProjectTranslationDocumentUserAssignments"
+            )
+
+            assignment_kwargs = {"DocumentGuid": document_guid}
+            if translator_user_guid:
+                assignment_kwargs["TranslatorUserGuid"] = translator_user_guid
+            if reviewer1_user_guid:
+                assignment_kwargs["Reviewer1UserGuid"] = reviewer1_user_guid
+            if reviewer2_user_guid:
+                assignment_kwargs["Reviewer2UserGuid"] = reviewer2_user_guid
+
+            assignment = assignment_type(**assignment_kwargs)
+
+            client.service.SetProjectTranslationDocumentUserAssignments(
+                serverProjectGuid=project_guid,
+                assignments=[assignment]
+            )
+            self.log_soap_debug("SetProjectTranslationDocumentUserAssignments")
+
+        except Fault as e:
+            self.logger.error(f"设置文档用户分配失败: {e}")
+            raise
+
+    def set_project_users(
+        self,
+        project_guid: str,
+        user_infos: List[Dict[str, Any]],
+    ) -> None:
+        """设置项目用户"""
+        client = self.get_client("ServerProject")
+
+        try:
+            user_info_type = client.get_type(
+                "{http://kilgray.com/memoqservices/2007}"
+                "ServerProjectUserInfo"
+            )
+
+            user_info_objects = []
+            for info in user_infos:
+                user_info_objects.append(user_info_type(**info))
+
+            client.service.SetProjectUsers(
+                serverProjectGuid=project_guid,
+                userInfos=user_info_objects
+            )
+            self.log_soap_debug("SetProjectUsers")
+
+        except Fault as e:
+            self.logger.error(f"设置项目用户失败: {e}")
+            raise
