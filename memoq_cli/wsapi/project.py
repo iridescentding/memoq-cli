@@ -159,7 +159,9 @@ class ProjectManager(WSAPIClient):
         deadline: datetime,
     ) -> None:
         """
-        设置翻译文档用户分配
+        增量设置翻译文档用户分配（read-modify-write）
+
+        仅修改指定文档的指定角色，保留其他文档和角色的现有分配。
 
         Args:
             project_guid: 项目 GUID
@@ -186,23 +188,92 @@ class ProjectManager(WSAPIClient):
                 ns + "ArrayOfServerProjectTranslationDocumentUserAssignments"
             )
 
-            role_assignment = role_assignment_type(
-                UserGuid=user_guid,
-                DocumentAssignmentRole=role,
-                DeadLine=deadline,
-            )
+            # Step 1: 读取现有所有文档分配
+            existing = self.list_translation_document_assignments(project_guid)
 
-            user_role_assignments = array_role_type(
-                TranslationDocumentUserRoleAssignment=[role_assignment]
-            )
+            # Step 2: 构建完整的分配列表
+            doc_assignments = []
+            target_doc_found = False
 
-            doc_assignment = doc_assignment_type(
-                DocumentGuid=document_guid,
-                UserRoleAssignments=user_role_assignments,
-            )
+            for doc_assign in existing:
+                existing_doc_guid = str(doc_assign.get("DocumentGuid", ""))
+                assignments_data = doc_assign.get("Assignments") or {}
+                if isinstance(assignments_data, dict):
+                    assign_list = assignments_data.get(
+                        "TranslationDocumentDetailedAssignmentInfo"
+                    ) or []
+                else:
+                    assign_list = assignments_data
 
+                role_objs = []
+
+                if existing_doc_guid == str(document_guid):
+                    # 目标文档：保留其他角色，替换目标角色
+                    target_doc_found = True
+                    target_role_replaced = False
+
+                    for info in assign_list:
+                        existing_role = info.get("RoleId", -1)
+                        if existing_role == role:
+                            # 替换为新分配
+                            target_role_replaced = True
+                            role_objs.append(role_assignment_type(
+                                UserGuid=user_guid,
+                                DocumentAssignmentRole=role,
+                                DeadLine=deadline,
+                            ))
+                        else:
+                            # 保留原有分配
+                            user_info = info.get("User", {})
+                            role_objs.append(role_assignment_type(
+                                UserGuid=str(user_info.get("AssigneeGuid", "")),
+                                DocumentAssignmentRole=existing_role,
+                                DeadLine=info.get("Deadline"),
+                            ))
+
+                    if not target_role_replaced:
+                        # 新增角色
+                        role_objs.append(role_assignment_type(
+                            UserGuid=user_guid,
+                            DocumentAssignmentRole=role,
+                            DeadLine=deadline,
+                        ))
+                else:
+                    # 非目标文档：原样保留
+                    for info in assign_list:
+                        user_info = info.get("User", {})
+                        role_objs.append(role_assignment_type(
+                            UserGuid=str(user_info.get("AssigneeGuid", "")),
+                            DocumentAssignmentRole=info.get("RoleId", 0),
+                            DeadLine=info.get("Deadline"),
+                        ))
+
+                if role_objs:
+                    doc_assignments.append(doc_assignment_type(
+                        DocumentGuid=existing_doc_guid,
+                        UserRoleAssignments=array_role_type(
+                            TranslationDocumentUserRoleAssignment=role_objs
+                        ),
+                    ))
+
+            if not target_doc_found:
+                # 目标文档之前没有任何分配，新建
+                doc_assignments.append(doc_assignment_type(
+                    DocumentGuid=document_guid,
+                    UserRoleAssignments=array_role_type(
+                        TranslationDocumentUserRoleAssignment=[
+                            role_assignment_type(
+                                UserGuid=user_guid,
+                                DocumentAssignmentRole=role,
+                                DeadLine=deadline,
+                            )
+                        ]
+                    ),
+                ))
+
+            # Step 3: 写入完整列表
             assignments_array = array_doc_type(
-                ServerProjectTranslationDocumentUserAssignments=[doc_assignment]
+                ServerProjectTranslationDocumentUserAssignments=doc_assignments
             )
 
             client.service.SetProjectTranslationDocumentUserAssignments(
@@ -275,7 +346,11 @@ class ProjectManager(WSAPIClient):
         project_guid: str,
         user_infos: List[Dict[str, Any]],
     ) -> None:
-        """设置项目用户"""
+        """
+        增量设置项目用户（read-modify-write）
+
+        保留现有项目用户，仅添加或更新指定的用户。
+        """
         client = self.get_client("ServerProject")
 
         try:
@@ -288,18 +363,44 @@ class ProjectManager(WSAPIClient):
             )
             array_type = client.get_type(ns + "ArrayOfServerProjectUserInfo")
 
-            user_info_objects = []
-            for info in user_infos:
-                project_roles = info.get("ProjectRoles", {})
-                if isinstance(project_roles, dict):
-                    roles_obj = roles_type(**project_roles)
-                else:
-                    roles_obj = roles_type(ProjectManager=False, Terminologist=False)
+            # Step 1: 读取现有项目用户
+            existing_users = self.list_project_users(project_guid)
 
+            # 构建 GUID -> 用户信息 的映射
+            user_map = {}
+            for eu in existing_users:
+                user_data = eu.get("User", {})
+                guid = str(user_data.get("UserGuid", ""))
+                roles = eu.get("ProjectRoles", {})
+                user_map[guid] = {
+                    "UserGuid": guid,
+                    "ProjectRoles": {
+                        "ProjectManager": roles.get("ProjectManager", False),
+                        "Terminologist": roles.get("Terminologist", False),
+                    },
+                    "PermForLicense": eu.get("PermForLicense", True),
+                }
+
+            # Step 2: 合并新用户（添加或更新）
+            for info in user_infos:
+                guid = str(info["UserGuid"])
+                project_roles = info.get("ProjectRoles", {})
+                if not isinstance(project_roles, dict):
+                    project_roles = {"ProjectManager": False, "Terminologist": False}
+                user_map[guid] = {
+                    "UserGuid": guid,
+                    "ProjectRoles": project_roles,
+                    "PermForLicense": info.get("PermForLicense", True),
+                }
+
+            # Step 3: 构建完整列表并写入
+            user_info_objects = []
+            for data in user_map.values():
+                roles_obj = roles_type(**data["ProjectRoles"])
                 user_info_objects.append(user_info_type(
-                    UserGuid=info["UserGuid"],
+                    UserGuid=data["UserGuid"],
                     ProjectRoles=roles_obj,
-                    PermForLicense=info.get("PermForLicense", True),
+                    PermForLicense=data["PermForLicense"],
                 ))
 
             users_array = array_type(ServerProjectUserInfo=user_info_objects)
