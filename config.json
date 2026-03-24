@@ -1,0 +1,25 @@
+{
+    "server": {
+        "host": "https://memoquat.sungrowpower.com",
+        "wsapi_port": 28080,
+        "rsapi_port": 28081,
+        "rsapi_path": "memoqserverhttpapi/v1"
+    },
+    "auth": {
+        "api_key": "TA3lBwmo8QyeXEFwDop70nGrOhNDzjjDxHqO9gAE",
+        "username": "wsapi",
+        "password": "Datalsp2026@"
+    },
+    "export": {
+        "default_path": "./exports",
+        "xliff_version": "1.2"
+    },
+    "import": {
+        "default_path": "./imports",
+        "filter_system_files": true
+    },
+    "logging": {
+        "level": "INFO",
+        "log_file": "memoq_cli.log"
+    }
+}

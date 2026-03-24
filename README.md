@@ -1,6 +1,6 @@
 # memoQ CLI
 
-A command-line tool for managing memoQ Server - handle projects, files, translation memories (TM), and terminology bases (TB) from your terminal.
+A command-line tool for managing memoQ Server - handle projects, files, translation memories (TM), terminology bases (TB), and project templates from your terminal.
 
 ## Table of Contents
 
@@ -144,6 +144,9 @@ memoq tm list
 # List terminology bases
 memoq tb list
 
+# List project templates
+memoq template list
+
 # Get help for any command
 memoq --help
 memoq project --help
@@ -161,10 +164,11 @@ memoq tm --help
 | `memoq init` | Create configuration file |
 | `memoq test` | Test server connection |
 | `memoq config` | View/edit configuration |
-| `memoq project` | Manage projects |
+| `memoq project` | Manage projects, users, and document assignments |
 | `memoq file` | Upload/download files |
 | `memoq tm` | Manage Translation Memories |
 | `memoq tb` | Manage Terminology Bases |
+| `memoq template` | Browse project templates |
 
 ### Project Commands
 
@@ -174,6 +178,9 @@ memoq project list
 
 # Filter projects by name
 memoq project list -f "client name"
+
+# Include archived projects
+memoq project list -a
 
 # Limit results
 memoq project list -n 10
@@ -187,8 +194,33 @@ memoq project info <PROJECT_GUID>
 # List documents in a project
 memoq project docs <PROJECT_GUID>
 
+# Show document status
+memoq project docs <PROJECT_GUID> -s
+
 # Get project statistics
 memoq project stats <PROJECT_GUID>
+```
+
+#### Project User Management
+
+```bash
+# List users assigned to a project
+memoq project users <PROJECT_GUID>
+
+# Interactively assign a user to a project
+# (prompts for user selection and role: Project Manager, Member, Terminologist)
+memoq project users assign <PROJECT_GUID>
+```
+
+#### Document User Assignment
+
+```bash
+# List document-user assignments in a table
+memoq project docs userassign <PROJECT_GUID>
+
+# Interactively assign a user to a document
+# (prompts for document, user, role, and deadline)
+memoq project docs assign <PROJECT_GUID>
 ```
 
 ### File Commands
@@ -197,20 +229,26 @@ memoq project stats <PROJECT_GUID>
 # Upload a single file
 memoq file upload <PROJECT_GUID> -p ./document.docx
 
-# Upload a ZIP file
+# Upload a ZIP file (extracts and imports all files)
 memoq file upload <PROJECT_GUID> -p ./files.zip -t zip
 
 # Upload entire folder
 memoq file upload <PROJECT_GUID> -p ./folder -t dir
 
+# Specify target language(s)
+memoq file upload <PROJECT_GUID> -p ./doc.docx -l zh-CN
+
 # Download all files from project
 memoq file download <PROJECT_GUID> -o ./downloads
+
+# Download a specific document
+memoq file download <PROJECT_GUID> -d <DOC_GUID> -o ./downloads
 
 # Download as XLIFF format
 memoq file download <PROJECT_GUID> -f xliff -o ./xliff
 
 # Import translated XLIFF back
-memoq file import-xliff <PROJECT_GUID> <DOC_GUID> -p ./translated.xliff
+memoq file import-xliff <PROJECT_GUID> -p ./translated.xliff
 ```
 
 ### TM (Translation Memory) Commands
@@ -219,8 +257,8 @@ memoq file import-xliff <PROJECT_GUID> <DOC_GUID> -p ./translated.xliff
 # List all TMs
 memoq tm list
 
-# Filter by language
-memoq tm list -s en-US -t zh-CN
+# Filter by name and language
+memoq tm list -f "project" -s en-US -t zh-CN
 
 # Get TM details
 memoq tm info <TM_GUID>
@@ -234,8 +272,8 @@ memoq tm import <TM_GUID> -p ./memory.tmx
 # Export TM to TMX
 memoq tm export <TM_GUID> -o ./exported.tmx
 
-# Search TM
-memoq tm search <TM_GUID> "search text"
+# Search TM (with custom threshold)
+memoq tm search <TM_GUID> "search text" -t 80
 
 # Delete TM (careful!)
 memoq tm delete <TM_GUID>
@@ -256,6 +294,9 @@ memoq tb create -n "My TB" -l en-US -l zh-CN
 # Add a term
 memoq tb add <TB_GUID> -t "en-US:computer" -t "zh-CN:电脑"
 
+# Add a term with definition and domain
+memoq tb add <TB_GUID> -t "en-US:RAM" -t "zh-CN:内存" -d "Random Access Memory" --domain "IT"
+
 # Search TB
 memoq tb search <TB_GUID> "computer"
 
@@ -269,6 +310,22 @@ memoq tb export <TB_GUID> -o ./terms.csv
 memoq tb delete <TB_GUID>
 ```
 
+### Template Commands
+
+```bash
+# List all project templates
+memoq template list
+
+# Filter by name
+memoq template list -f "standard"
+
+# Get template details
+memoq template info <TEMPLATE_GUID>
+
+# Output as JSON
+memoq template list --json
+```
+
 ### Global Options
 
 ```bash
@@ -280,6 +337,9 @@ memoq -v project list
 
 # Quiet mode (errors only)
 memoq -q project list
+
+# Enable SOAP debug logging (logs raw SOAP XML request/response)
+memoq --soap-debug project list
 
 # Show version
 memoq --version
@@ -417,10 +477,10 @@ memoq project list
 
 ### What is WSAPI vs RSAPI?
 
-- **WSAPI** (Web Service API): Used for projects and files
-- **RSAPI** (REST API): Used for TMs and TBs
+- **WSAPI** (Web Service API): SOAP-based API used for projects, files, and templates
+- **RSAPI** (REST API): REST-based API used for TMs and TBs
 
-You don't need to worry about this - the tool handles it automatically.
+You don't need to worry about this - the tool handles it automatically. Use the `--soap-debug` flag if you need to inspect raw SOAP traffic for debugging.
 
 ### Quick Workflow Example
 
@@ -431,10 +491,16 @@ memoq project list
 # 2. Upload files to a project
 memoq file upload a1b2c3d4-... -p ./my-documents -t dir
 
-# 3. When translation is done, download files
+# 3. Assign users to documents
+memoq project docs assign a1b2c3d4-...
+
+# 4. Check assignment status
+memoq project docs userassign a1b2c3d4-...
+
+# 5. When translation is done, download files
 memoq file download a1b2c3d4-... -o ./translated
 
-# 4. Or export as XLIFF for review
+# 6. Or export as XLIFF for review
 memoq file download a1b2c3d4-... -f xliff -o ./for-review
 ```
 
