@@ -10,9 +10,6 @@ from memoq_cli.wsapi.project_template import ProjectTemplateManager
 
 def main():
     """Test with real server"""
-    SERVER_URL = "https://memoq.datalsp.com"
-    PORT = 8081
-    API_KEY = "lNWFkQ2VJm2AlfDCpEuUdduVMLO5GsGrzx8VBchJ"
 
     print("\n" + "="*100)
     print("Testing Project Templates on Real Server")
