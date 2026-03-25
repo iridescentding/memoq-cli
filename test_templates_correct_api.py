@@ -15,10 +15,6 @@ import json
 
 
 def main():
-    """Test Light Resource Service for project templates"""
-    SERVER_URL = "https://memoq.datalsp.com:8081"
-    API_KEY = "lNWFkQ2VJm2AlfDCpEuUdduVMLO5GsGrzx8VBchJ"
-
     wsdl_url = f"{SERVER_URL}/memoqservices/resource?wsdl"
 
     print(f"\n{'='*100}")
