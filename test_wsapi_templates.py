@@ -11,10 +11,6 @@ def main():
     """Test project template functionality"""
 
     # Configuration
-    SERVER_URL = "https://memoq.datalsp.com"
-    PORT = 8081
-    API_KEY = "lNWFkQ2VJm2AlfDCpEuUdduVMLO5GsGrzx8VBchJ"
-
     print("\n" + "="*80)
     print("memoQ WSAPI Project Template Test")
     print("="*80)
