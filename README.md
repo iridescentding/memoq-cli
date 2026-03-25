@@ -1,6 +1,6 @@
 # memoQ CLI
 
-A command-line tool for managing memoQ Server - handle projects, files, translation memories (TM), terminology bases (TB), and project templates from your terminal.
+A command-line tool for managing memoQ Server - handle projects, files, translation memories (TM), terminology bases (TB), project templates, and light resources from your terminal.
 
 ## Table of Contents
 
@@ -169,6 +169,7 @@ memoq tm --help
 | `memoq tm` | Manage Translation Memories |
 | `memoq tb` | Manage Terminology Bases |
 | `memoq template` | Browse project templates |
+| `memoq resource` | Light Resource Service (import filters, list all resources) |
 
 ### Project Commands
 
@@ -316,8 +317,14 @@ memoq tb delete <TB_GUID>
 # List all project templates
 memoq template list
 
-# Filter by name
+# Filter by name (server-side filtering)
 memoq template list -f "standard"
+
+# Filter by language code
+memoq template list --lang en-US
+
+# Combine filters
+memoq template list -f "translation" --lang de-DE
 
 # Get template details
 memoq template info <TEMPLATE_GUID>
@@ -325,6 +332,42 @@ memoq template info <TEMPLATE_GUID>
 # Output as JSON
 memoq template list --json
 ```
+
+### Resource Commands
+
+Manage memoQ light resources (filter configs, MT settings, QA settings, etc.) via the Light Resource Service API.
+
+```bash
+# List all resources across all supported types
+memoq resource listall
+
+# List resources of a specific type only
+memoq resource listall --type FilterConfigs
+memoq resource listall --type QASettings
+memoq resource listall --type MTSettings
+
+# Output as JSON
+memoq resource listall --json
+
+# Import a filter config file as a new resource
+memoq resource importnewfilter ./myfilter.xml
+
+# Import with a custom name
+memoq resource importnewfilter ./myfilter.xml --name "My Custom Filter"
+```
+
+**Supported resource types for `listall`:**
+
+| Type | Description |
+|------|-------------|
+| `FilterConfigs` | File filter configurations |
+| `FontSubstitution` | Font substitution rules |
+| `IgnoreLists` | Spellcheck ignore lists |
+| `MTSettings` | Machine translation settings |
+| `PathRules` | Import path rules |
+| `ProjectTemplate` | Project templates |
+| `QASettings` | QA check settings |
+| `SegRules` | Segmentation rules |
 
 ### Global Options
 
@@ -421,7 +464,7 @@ memoq config --get server.host
 
 **Solutions:**
 1. Check server URL is correct
-2. Check port numbers (WSAPI usually 8080, RSAPI usually 443)
+2. Check port numbers (WSAPI usually 8080, RSAPI usually 8082)
 3. Make sure you can access the server from your network
 4. Ask your IT admin if there's a firewall blocking access
 

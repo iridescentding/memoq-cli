@@ -17,22 +17,38 @@ class ProjectTemplateManager(WSAPIClient):
         super().__init__(**kwargs)
         self.logger = get_logger("wsapi.project_template")
 
-    def list_templates(self) -> List[Dict[str, Any]]:
+    def list_templates(
+        self,
+        name_filter: str = None,
+        language_filter: str = None,
+    ) -> List[Dict[str, Any]]:
         """
         List all project templates
 
         Uses Light Resource Service API:
         ListResources(ResourceType.ProjectTemplate, filter)
 
+        Args:
+            name_filter: Filter by name/description (server-side, NameOrDescription)
+            language_filter: Filter by language code (server-side, LanguageCode)
+
         Returns:
             List of project template dictionaries
         """
         client = self.get_client("Resource")
 
-        # Call ListResources with 'ProjectTemplate' resource type
-        # According to memoQ documentation:
-        # https://docs.memoq.com/current/api-docs/wsapi/api/lightresourceservice/
-        templates = client.service.ListResources('ProjectTemplate', None)
+        # Build LightResourceListFilter if any filter params provided
+        filter_obj = None
+        if name_filter or language_filter:
+            filter_type = client.get_type('{http://kilgray.com/memoqservices/2007}LightResourceListFilter')
+            filter_kwargs = {}
+            if name_filter:
+                filter_kwargs['NameOrDescription'] = name_filter
+            if language_filter:
+                filter_kwargs['LanguageCode'] = language_filter
+            filter_obj = filter_type(**filter_kwargs)
+
+        templates = client.service.ListResources('ProjectTemplate', filter_obj)
 
         # Convert to Python dict
         templates_data = serialize_object(templates)

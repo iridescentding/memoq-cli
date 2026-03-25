@@ -165,7 +165,7 @@ class Config:
 
     @property
     def rsapi_port(self) -> int:
-        return self.get("server.rsapi_port", 443)
+        return self.get("server.rsapi_port", 8082)
 
     @property
     def rsapi_path(self) -> str:
