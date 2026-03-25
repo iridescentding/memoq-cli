@@ -18,31 +18,27 @@ def template():
 
 
 @template.command("list")
-@click.option("--filter", "-f", "filter_text", help="Filter by name")
+@click.option("--filter", "-f", "filter_text", help="Filter by name/description (server-side)")
+@click.option("--lang", "-l", "language_filter", help="Filter by language code (e.g. en-US)")
 @click.option("--limit", "-n", type=int, help="Limit number of results")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
-def template_list(ctx, filter_text, limit, as_json):
+def template_list(ctx, filter_text, language_filter, limit, as_json):
     """List all project templates
 
     \b
     Examples:
         memoq template list
         memoq template list --filter "Translation"
+        memoq template list --lang en-US
         memoq template list --json
     """
     try:
         manager = ProjectTemplateManager()
-        templates = manager.list_templates()
-
-        # Filter if needed
-        if filter_text:
-            filter_lower = filter_text.lower()
-            templates = [
-                t for t in templates
-                if filter_lower in t.get("Name", t.get("FriendlyName", "")).lower()
-                or filter_lower in t.get("Guid", "").lower()
-            ]
+        kwargs = {"name_filter": filter_text}
+        if language_filter:
+            kwargs["language_filter"] = language_filter
+        templates = manager.list_templates(**kwargs)
 
         if limit:
             templates = templates[:limit]

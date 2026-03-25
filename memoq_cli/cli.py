@@ -13,7 +13,7 @@ import click
 
 from .config import get_config, Config, reset_config
 from .utils import setup_logging
-from .commands import project, file, tm, tb
+from .commands import project, file, tm, tb, template, resource
 
 
 @click.group()
@@ -84,6 +84,8 @@ cli.add_command(project)
 cli.add_command(file)
 cli.add_command(tm)
 cli.add_command(tb)
+cli.add_command(template)
+cli.add_command(resource)
 
 
 @cli.command()
@@ -91,7 +93,7 @@ cli.add_command(tb)
               help="Server address (without port)")
 @click.option("--wsapi-port", default=8080, prompt="WSAPI port",
               help="WSAPI port", type=int)
-@click.option("--rsapi-port", default=443, prompt="RSAPI port",
+@click.option("--rsapi-port", default=8082, prompt="RSAPI port",
               help="RSAPI port", type=int)
 @click.option("--rsapi-path", default="memoqserverhttpapi/v1", prompt="RSAPI path",
               help="RSAPI API path")
