@@ -12,10 +12,6 @@ from memoq_cli.wsapi.project_template import ProjectTemplateManager
 config = Config()
 config.load("config.json")
 
-TEMPLATE_GUID = "814e5e47-e96c-4b09-b038-316736b8f40a"
-# 从模板信息获取的creator user
-CREATOR_USER = "3eae8152-a9d4-f011-b521-9c65eba8f196"  # 贾利云-管理员
-
 pm = ProjectManager(
     host=config.server_host,
     port=config.wsapi_port,
