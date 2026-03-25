@@ -11,12 +11,6 @@ from memoq_cli.rsapi.project_template import ProjectTemplateClient
 def main():
     """Test project template functionality"""
 
-    # Configuration
-    SERVER_URL = "https://memoq.datalsp.com"
-    PORT = 8082
-    USERNAME = "wsapi"
-    PASSWORD = "Datalsp2026@"
-
     print("\n" + "="*80)
     print("memoQ Project Template Test")
     print("="*80)
