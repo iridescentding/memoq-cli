@@ -22,11 +22,6 @@ def test_endpoint(client, endpoint):
 
 
 def main():
-    """Main function"""
-    SERVER_URL = "https://memoq.datalsp.com"
-    PORT = 8082
-    USERNAME = "wsapi"
-    PASSWORD = "Datalsp2026@"
 
     print("\n" + "="*80)
     print("Testing RSAPI Endpoints for Project Templates")
