@@ -198,6 +198,13 @@ memoq project docs <PROJECT_GUID>
 # Show document status
 memoq project docs <PROJECT_GUID> -s
 
+# Show detailed document info with assignments (uses ListProjectTranslationDocuments2)
+memoq project docs <PROJECT_GUID> -d
+memoq project docs detailed <PROJECT_GUID>
+
+# Detailed view without assignment info (faster)
+memoq project docs detailed <PROJECT_GUID> -n
+
 # Get project statistics
 memoq project stats <PROJECT_GUID>
 ```

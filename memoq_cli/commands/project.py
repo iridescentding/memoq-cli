@@ -99,14 +99,21 @@ def project_info(ctx, project_guid, as_json):
 @project.group("docs", invoke_without_command=True)
 @click.argument("project_guid")
 @click.option("--status", "-s", is_flag=True, help="Show document status")
+@click.option("--detailed", "-d", is_flag=True,
+              help="Show detailed info with assignments (uses ListProjectTranslationDocuments2)")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
-def project_docs(ctx, project_guid, status, as_json):
+def project_docs(ctx, project_guid, status, detailed, as_json):
     """List documents in a project, or manage document assignments"""
     ctx.ensure_object(dict)
     ctx.obj["project_guid"] = project_guid
 
     if ctx.invoked_subcommand is not None:
+        return
+
+    # If -d flag is used, delegate to the detailed subcommand logic
+    if detailed:
+        ctx.invoke(docs_detailed, no_assignments=False, as_json=as_json)
         return
 
     try:
@@ -139,6 +146,84 @@ def project_docs(ctx, project_guid, status, as_json):
             click.echo(f"     Status:  {status_name}")
             click.echo(f"     Words:   {word_count}")
             click.echo(f"     Target:  {target_lang}")
+            click.echo()
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+@project_docs.command("detailed")
+@click.option("--no-assignments", "-n", is_flag=True,
+              help="Skip assignment info (faster)")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def docs_detailed(ctx, no_assignments, as_json):
+    """List documents with detailed status and assignment info"""
+    project_guid = ctx.obj["project_guid"]
+
+    try:
+        pm = ProjectManager()
+        docs = pm.list_project_translation_documents2(
+            project_guid,
+            fill_in_assignment_info=not no_assignments,
+        )
+
+        if as_json:
+            output_json(docs)
+            return
+
+        if not docs:
+            click.echo("No documents in project")
+            return
+
+        click.echo(f"\nFound {len(docs)} document(s):\n")
+
+        role_map = {0: "Translator", 1: "Reviewer1", 2: "Reviewer2"}
+
+        for i, doc in enumerate(docs, 1):
+            name = doc.get("DocumentName", "Unknown")
+            guid = doc.get("DocumentGuid", "")
+            status_name = doc.get("DocumentStatus", "N/A")
+            workflow_status = doc.get("WorkflowStatus", "")
+            word_count = doc.get("TotalWordCount", "N/A")
+            target_lang = doc.get("TargetLangCode", "N/A")
+
+            click.echo(f"  {i}. {name}")
+            click.echo(f"     GUID:      {guid}")
+            click.echo(f"     Status:    {status_name}")
+            if workflow_status and workflow_status != "Unknown":
+                click.echo(f"     Workflow:  {workflow_status}")
+            click.echo(f"     Words:     {word_count}")
+            click.echo(f"     Target:    {target_lang}")
+
+            # Show assignment info if available
+            if not no_assignments:
+                assignments_data = doc.get("UserAssignments") or {}
+                if isinstance(assignments_data, dict):
+                    assign_list = assignments_data.get(
+                        "TranslationDocumentDetailedAssignmentInfo", []
+                    ) or []
+                else:
+                    assign_list = assignments_data
+                if assign_list:
+                    click.echo(f"     Assignments:")
+                    for assign in assign_list:
+                        role_id = assign.get("RoleId", -1)
+                        role_name = role_map.get(role_id, f"Role({role_id})")
+                        user = assign.get("User") or {}
+                        user_name = user.get("AssigneeName", "N/A")
+                        deadline = assign.get("Deadline")
+                        deadline_str = ""
+                        if deadline:
+                            if hasattr(deadline, "strftime"):
+                                deadline_str = deadline.strftime("%Y-%m-%d %H:%M")
+                            else:
+                                deadline_str = str(deadline)[:16]
+                        click.echo(f"       - {role_name}: {user_name}"
+                                   + (f"  (deadline: {deadline_str})" if deadline_str else ""))
+                else:
+                    click.echo(f"     Assignments: (none)")
+
             click.echo()
 
     except Exception as e:

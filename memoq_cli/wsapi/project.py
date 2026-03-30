@@ -286,6 +286,40 @@ class ProjectManager(WSAPIClient):
             self.logger.error(f"设置文档用户分配失败: {e}")
             raise
 
+    def list_project_translation_documents2(
+        self,
+        project_guid: str,
+        fill_in_assignment_info: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        列出项目翻译文档的详细信息（使用 ListProjectTranslationDocuments2）
+
+        Args:
+            project_guid: 项目 GUID
+            fill_in_assignment_info: 是否填充分配信息（False 性能更好）
+        """
+        client = self.get_client("ServerProject")
+
+        try:
+            options_type = client.get_type(
+                "{http://kilgray.com/memoqservices/2007}"
+                "ListServerProjectTranslationDocument2Options"
+            )
+            options = options_type(
+                FillInAssignmentInformation=fill_in_assignment_info,
+            )
+
+            result = client.service.ListProjectTranslationDocuments2(
+                serverProjectGuid=project_guid,
+                options=options,
+            )
+            self.log_soap_debug("ListProjectTranslationDocuments2")
+            return serialize_object(result) or []
+
+        except Fault as e:
+            self.logger.error(f"列出项目文档详情失败: {e}")
+            raise
+
     def list_translation_document_assignments(
         self,
         project_guid: str,
