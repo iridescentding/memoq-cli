@@ -100,7 +100,7 @@ Run the setup wizard:
 ```
 
 It will ask you for:
-- **Server host**: Your memoQ server URL (e.g., `https://memoq.datalsp.com`)
+- **Server host**: Your memoQ server URL (e.g., `https://your-memoq-server.example.com`)
 - **WSAPI port**: e.g., `8081`
 - **RSAPI port**: e.g., `8082`
 - **RSAPI path**: Usually `memoqserverhttpapi/v1`
@@ -120,9 +120,9 @@ If successful, you'll see:
 ```
 Connection Test
 
-WSAPI: https://memoq.datalsp.com:8081/memoqservices
+WSAPI: https://your-memoq-server.example.com:8081/memoqservices
   OK: WSDL loaded, services: ['ServerProjectService']
-RSAPI: https://memoq.datalsp.com:8082/memoqserverhttpapi/v1
+RSAPI: https://your-memoq-server.example.com:8082/memoqserverhttpapi/v1
   OK: RSAPI reachable (HTTP 404)
 ```
 
@@ -423,7 +423,7 @@ memoq config --get server.host
 ```json
 {
     "server": {
-        "host": "https://memoq.datalsp.com",
+        "host": "https://your-memoq-server.example.com",
         "wsapi_port": 8081,
         "rsapi_port": 8082,
         "rsapi_base": "memoqserverhttpapi/v1"
