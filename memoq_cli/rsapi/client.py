@@ -98,6 +98,8 @@ class RSAPIClient:
         self._port = port or self.config.rsapi_port
         self._api_path = api_path or self.config.rsapi_path
         self._api_key = api_key or self.config.api_key
+        self._username = self.config.username
+        self._password = self.config.password
         self.verify_ssl = verify_ssl
         
         # 创建会话
@@ -139,32 +141,36 @@ class RSAPIClient:
     
     def authenticate(self) -> str:
         """
-        使用 API Key 获取访问令牌
-        
+        使用用户名密码获取访问令牌 (MemoQServerUser LoginMode 0)
+
         Returns:
             访问令牌
-        
+
         Raises:
             requests.HTTPError: 认证失败
         """
         url = self._get_url("auth/login")
-        
+
         self.logger.debug(f"认证请求: {url}")
-        
-        payload = {"ApiKey": self._api_key}
-        
+
+        payload = {
+            "username": self._username,
+            "password": self._password,
+            "LoginMode": "0",
+        }
+
         response = self.session.post(url, json=payload)
         response.raise_for_status()
-        
+
         data = response.json()
         self._access_token = data.get("AccessToken")
-        
+
         if not self._access_token:
             raise ValueError("认证响应中未包含 AccessToken")
-        
-        # 更新会话头
-        self.session.headers["Authorization"] = f"Bearer {self._access_token}"
-        
+
+        # memoQ RSAPI 使用 MQS-API 认证头
+        self.session.headers["Authorization"] = f"MQS-API {self._access_token}"
+
         self.logger.info("RSAPI 认证成功")
         return self._access_token
     

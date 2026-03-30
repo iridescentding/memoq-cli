@@ -97,10 +97,14 @@ cli.add_command(resource)
               help="RSAPI port", type=int)
 @click.option("--rsapi-path", default="memoqserverhttpapi/v1", prompt="RSAPI path",
               help="RSAPI API path")
-@click.option("--api-key", prompt="API Key",
-              help="API Key for authentication")
+@click.option("--api-key", prompt="API Key (for WSAPI)",
+              help="API Key for WSAPI authentication")
+@click.option("--username", prompt="RSAPI Username (memoQ user with API access)",
+              help="Username for RSAPI authentication")
+@click.option("--password", prompt="RSAPI Password", hide_input=True,
+              help="Password for RSAPI authentication")
 @click.option("--output", "-o", default="config.json", help="Output config file path")
-def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, output):
+def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, username, password, output):
     """Initialize configuration file
 
     \b
@@ -117,8 +121,8 @@ def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, output):
         },
         "auth": {
             "api_key": api_key,
-            "username": "",
-            "password": ""
+            "username": username,
+            "password": password
         },
         "export": {
             "default_path": "./exports",
@@ -142,10 +146,11 @@ def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, output):
 
     click.echo(f"\nDone: Config file created at {config_path.absolute()}")
     click.echo(f"\nSummary:")
-    click.echo(f"   Server:  {host}")
-    click.echo(f"   WSAPI:   {host}:{wsapi_port}")
-    click.echo(f"   RSAPI:   {host}:{rsapi_port}/{rsapi_path}")
-    click.echo(f"   API Key: {api_key}")
+    click.echo(f"   Server:        {host}")
+    click.echo(f"   WSAPI:         {host}:{wsapi_port}")
+    click.echo(f"   RSAPI:         {host}:{rsapi_port}/{rsapi_path}")
+    click.echo(f"   API Key:       {api_key}")
+    click.echo(f"   RSAPI User:    {username}")
     click.echo(f"\nTip: Edit the config file to modify settings")
 
 
