@@ -117,19 +117,149 @@ class ProjectManager(WSAPIClient):
 
         return documents
 
-    def get_project_statistics(self, project_guid: str) -> Dict[str, Any]:
-        """获取项目统计信息"""
-        client = self.get_client("ServerProject")
+    # -- Statistics (async task-based) ----------------------------------
+
+    def _build_statistics_options(self, sp_client):
+        """构造一个默认 StatisticsOptions / Build default StatisticsOptions."""
+        ns = "{http://kilgray.com/memoqservices/2007}"
+        options_type = sp_client.get_type(ns + "StatisticsOptions")
+        return options_type(
+            Algorithm="MemoQ",
+            Analysis_Homogenity=False,
+            Analysis_ProjectTMs=True,
+            Analyzis_DetailsByTM=False,
+            DisableCrossFileRepetition=False,
+            IncludeLockedRows=True,
+            RepetitionPreferenceOver100=False,
+            ShowCounts=True,
+            ShowCounts_IncludeTargetCount=False,
+            ShowCounts_IncludeWhitespacesInCharCount=False,
+            ShowCounts_StatusReport=True,
+            ShowResultsPerFile=True,
+            TagCharWeight=0.0,
+            TagWordWeight=0.0,
+        )
+
+    def _wait_for_task(self, task_id: str, poll_interval: float = 2.0,
+                       timeout: float = 600.0) -> Dict[str, Any]:
+        """轮询任务直到完成, 返回 TaskResult / Poll a task until done, return result."""
+        import time
+        tasks = self.get_client("Tasks")
+        start = time.time()
+        last_status = None
+        while True:
+            info = tasks.service.GetTaskStatus(taskId=task_id)
+            self.log_soap_debug("GetTaskStatus")
+            info_dict = serialize_object(info) or {}
+            status = info_dict.get("Status")
+            last_status = status
+            if status == "Completed":
+                break
+            if status in ("Failed", "Cancelled", "InvalidTask"):
+                raise RuntimeError(
+                    f"Statistics task {task_id} ended with status {status}"
+                )
+            if time.time() - start > timeout:
+                raise TimeoutError(
+                    f"Statistics task {task_id} timed out after {timeout:.0f}s "
+                    f"(last status: {last_status})"
+                )
+            time.sleep(poll_interval)
+
+        result = tasks.service.GetTaskResult(taskId=task_id)
+        self.log_soap_debug("GetTaskResult")
+        return serialize_object(result) or {}
+
+    def get_project_statistics(
+        self,
+        project_guid: str,
+        target_lang_codes: Optional[List[str]] = None,
+        result_format: str = "CSV_MemoQ",
+    ) -> Dict[str, Any]:
+        """
+        获取项目统计信息 (异步, 使用 StartStatisticsOnProjectTask2)
+        Get project-level statistics via async task.
+
+        Args:
+            project_guid: 项目 GUID
+            target_lang_codes: 可选, 指定目标语言 / Optional target language filter
+            result_format: StatisticsResultFormat 枚举值 / enum string
+        """
+        sp = self.get_client("ServerProject")
 
         try:
-            result = client.service.GetProjectStatistics(
-                serverProjectGuid=project_guid
+            ns = "{http://kilgray.com/memoqservices/2007}"
+            req_type = sp.get_type(ns + "CreateStatisticsOnProjectRequest")
+            array_str = sp.get_type(
+                "{http://schemas.microsoft.com/2003/10/Serialization/Arrays}"
+                "ArrayOfstring"
             )
-            self.log_soap_debug("GetProjectStatistics")
-            return serialize_object(result) or {}
+
+            req_kwargs = {
+                "ProjectGuid": project_guid,
+                "Options": self._build_statistics_options(sp),
+                "ResultFormat": result_format,
+            }
+            if target_lang_codes:
+                req_kwargs["TargetLangCodes"] = array_str(string=target_lang_codes)
+
+            request = req_type(**req_kwargs)
+
+            task_info = sp.service.StartStatisticsOnProjectTask2(request=request)
+            self.log_soap_debug("StartStatisticsOnProjectTask2")
+            task_id = (serialize_object(task_info) or {}).get("TaskId")
+            if not task_id:
+                raise RuntimeError("StartStatisticsOnProjectTask2 returned no TaskId")
+            self.logger.info(f"统计任务已启动 / stats task started: {task_id}")
+
+            return self._wait_for_task(str(task_id))
 
         except Fault as e:
             self.logger.error(f"获取项目统计失败: {e}")
+            raise
+
+    def get_document_statistics(
+        self,
+        project_guid: str,
+        document_guids: List[str],
+        result_format: str = "CSV_MemoQ",
+    ) -> Dict[str, Any]:
+        """
+        获取指定文档的统计信息 (异步, StartStatisticsOnTranslationDocumentsTask2)
+        Get document-level statistics via async task.
+        """
+        sp = self.get_client("ServerProject")
+
+        try:
+            ns = "{http://kilgray.com/memoqservices/2007}"
+            req_type = sp.get_type(ns + "CreateStatisticsOnDocumentsRequest")
+            array_guid = sp.get_type(
+                "{http://schemas.microsoft.com/2003/10/Serialization/Arrays}"
+                "ArrayOfguid"
+            )
+
+            request = req_type(
+                ProjectGuid=project_guid,
+                Options=self._build_statistics_options(sp),
+                ResultFormat=result_format,
+                DocumentOrSliceGuids=array_guid(guid=document_guids),
+            )
+
+            task_info = sp.service.StartStatisticsOnTranslationDocumentsTask2(
+                request=request
+            )
+            self.log_soap_debug("StartStatisticsOnTranslationDocumentsTask2")
+            task_id = (serialize_object(task_info) or {}).get("TaskId")
+            if not task_id:
+                raise RuntimeError(
+                    "StartStatisticsOnTranslationDocumentsTask2 returned no TaskId"
+                )
+            self.logger.info(f"文档统计任务已启动 / docs stats task started: {task_id}")
+
+            return self._wait_for_task(str(task_id))
+
+        except Fault as e:
+            self.logger.error(f"获取文档统计失败: {e}")
             raise
 
     def list_users(self, active_only: bool = True) -> List[Dict[str, Any]]:
@@ -373,6 +503,59 @@ class ProjectManager(WSAPIClient):
 
         except Fault as e:
             self.logger.error(f"列出项目用户失败: {e}")
+            raise
+
+    def update_project(
+        self,
+        project_guid: str,
+        description: Optional[str] = None,
+        deadline: Optional[datetime] = None,
+        client: Optional[str] = None,
+        domain: Optional[str] = None,
+        project_attr: Optional[str] = None,
+        subject: Optional[str] = None,
+        callback_url: Optional[str] = None,
+        source_editing_turned_off: Optional[bool] = None,
+    ) -> None:
+        """
+        Update server project header information.
+
+        Uses WSAPI UpdateProject(ServerProjectUpdateInfo).
+        All fields except project_guid are optional; null means no change.
+        """
+        ws_client = self.get_client("ServerProject")
+
+        try:
+            ns = "{http://kilgray.com/memoqservices/2007}"
+            update_info_type = ws_client.get_type(ns + "ServerProjectUpdateInfo")
+
+            kwargs = {"ServerProjectGuid": project_guid}
+
+            if description is not None:
+                kwargs["Description"] = description
+            if deadline is not None:
+                kwargs["Deadline"] = deadline
+            if client is not None:
+                kwargs["Client"] = client
+            if domain is not None:
+                kwargs["Domain"] = domain
+            if project_attr is not None:
+                kwargs["Project"] = project_attr
+            if subject is not None:
+                kwargs["Subject"] = subject
+            if callback_url is not None:
+                kwargs["CallbackWebServiceUrl"] = callback_url
+            if source_editing_turned_off is not None:
+                kwargs["SourceEditingTurnedOff"] = source_editing_turned_off
+
+            update_info = update_info_type(**kwargs)
+
+            ws_client.service.UpdateProject(spInfo=update_info)
+            self.log_soap_debug("UpdateProject")
+            self.logger.info(f"项目已更新: {project_guid}")
+
+        except Fault as e:
+            self.logger.error(f"更新项目失败: {e}")
             raise
 
     def set_project_users(

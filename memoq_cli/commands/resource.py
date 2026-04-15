@@ -30,7 +30,18 @@ SUPPORTED_RESOURCE_TYPES = [
 
 @click.group()
 def resource():
-    """Light Resource Service commands"""
+    """轻量级资源服务命令 / Light Resource Service commands
+
+    \b
+    子命令 / Subcommands:
+        listall           列出所有轻量级资源 / List all light resources
+        importnewfilter   导入过滤器配置为新资源 / Import filter config as resource
+
+    \b
+    已支持的资源类型 / Supported resource types:
+        FilterConfigs, FontSubstitution, IgnoreLists, MTSettings,
+        PathRules, ProjectTemplate, QASettings, SegRules
+    """
     pass
 
 
@@ -39,10 +50,18 @@ def resource():
 @click.option("--name", "-n", "resource_name", help="Name for the new filter resource")
 @click.pass_context
 def import_new_filter(ctx, file_path, resource_name):
-    """Import a filter config file as a new resource
+    """导入过滤器配置为新资源 / Import a filter config file as a new resource
 
     \b
-    Examples:
+    说明 / Note:
+        先分块上传文件, 再调用 ImportNewAndPublish 创建 FilterConfigs 资源。
+        Uploads file in chunks, then calls ImportNewAndPublish to create a
+        FilterConfigs resource.
+        未指定 --name 时自动生成 `{basename}_{timestamp}`。
+        Without --name, generates `{basename}_{timestamp}` automatically.
+
+    \b
+    示例 / Examples:
         memoq resource importnewfilter ./myfilter.xml
         memoq resource importnewfilter ./myfilter.xml --name "My Custom Filter"
     """
@@ -98,13 +117,17 @@ def import_new_filter(ctx, file_path, resource_name):
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
 def list_all(ctx, resource_type, as_json):
-    """List all light resources on the server
+    """列出服务器上所有轻量级资源 / List all light resources on the server
 
     \b
-    Examples:
+    参数 / Options:
+        -t/--type    仅列出指定类型 / Only list a specific resource type
+
+    \b
+    示例 / Examples:
         memoq resource listall
-        memoq resource listall --type FilterConfigs
-        memoq resource listall --json
+        memoq resource listall -t FilterConfigs
+        memoq resource listall -t QASettings --json
     """
     try:
         ws_client = WSAPIClient()

@@ -210,40 +210,46 @@ class RSAPIClient:
         return response.text
     
     def post(
-        self, 
-        endpoint: str, 
+        self,
+        endpoint: str,
         data: Optional[Dict] = None,
         json_data: Optional[Dict] = None,
+        params: Optional[Dict] = None,
         **kwargs
     ) -> Any:
         """
         POST 请求
-        
+
         Args:
             endpoint: API 端点
             data: 表单数据
             json_data: JSON 数据
+            params: 查询参数
             **kwargs: 其他 requests 参数
-        
+
         Returns:
             JSON 响应数据
         """
         self.ensure_authenticated()
-        
+
         url = self._get_url(endpoint)
         self.logger.debug(f"POST {url}")
-        
+
         if json_data is not None:
-            response = self.session.post(url, json=json_data, **kwargs)
+            response = self.session.post(url, json=json_data, params=params, **kwargs)
         else:
-            response = self.session.post(url, data=data, **kwargs)
-        
+            response = self.session.post(url, data=data, params=params, **kwargs)
+
         response.raise_for_status()
-        
+
+        # 204 No Content or empty body
+        if response.status_code == 204 or not response.content:
+            return None
+
         if response.headers.get("Content-Type", "").startswith("application/json"):
             return response.json()
         return response.text
-    
+
     def put(
         self, 
         endpoint: str, 
