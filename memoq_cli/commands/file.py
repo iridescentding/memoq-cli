@@ -13,7 +13,14 @@ from ..utils import output_json, handle_api_error
 
 @click.group()
 def file():
-    """File import/export commands"""
+    """文件导入/导出命令 / File import/export commands
+
+    \b
+    子命令 / Subcommands:
+        upload        上传文件/目录/ZIP 到项目 / Upload file, dir, or zip
+        download      从项目下载文件 / Download documents from a project
+        import-xliff  导入 XLIFF/mqxliff 回填文档 / Import XLIFF to update a document
+    """
     pass
 
 
@@ -31,7 +38,22 @@ def file():
               help="Filter system files")
 @click.pass_context
 def file_upload(ctx, project_guid, path, file_type, target_lang, preserve_structure, filter_system):
-    """Upload files to a project"""
+    """上传文件到项目 / Upload files to a project
+
+    \b
+    参数 / Options:
+        -p/--path           文件或目录路径 / File or directory path (必填)
+        -t/--type           file | zip | dir  (默认 / default: file)
+        -l/--target-lang    目标语言, 可重复 / Target language(s), repeatable
+        -P/--preserve-structure   保留目录结构 (zip/dir) / Preserve dir tree
+        --filter-system           过滤系统文件 (dir) / Skip system files
+
+    \b
+    示例 / Examples:
+        memoq file upload <GUID> -p ./doc.docx
+        memoq file upload <GUID> -p ./docs.zip -t zip -l eng -l por
+        memoq file upload <GUID> -p ./src_folder -t dir --no-preserve-structure
+    """
     fm = FileManager()
     target_languages = list(target_lang) if target_lang else None
 
@@ -86,7 +108,21 @@ def file_upload(ctx, project_guid, path, file_type, target_lang, preserve_struct
 @click.option("--overwrite", is_flag=True, help="Overwrite existing files")
 @click.pass_context
 def file_download(ctx, project_guid, document_guid, output, export_format, overwrite):
-    """Download files from a project"""
+    """从项目下载文件 / Download files from a project
+
+    \b
+    参数 / Options:
+        -d/--doc       文档 GUID; 省略则下载全部 / Document GUID; omit = all
+        -o/--output    输出路径 / Output path (默认 config.export.default_path)
+        -f/--format    target | xliff  (默认 / default: target)
+        --overwrite    覆盖已存在文件 / Overwrite existing files
+
+    \b
+    示例 / Examples:
+        memoq file download <GUID>
+        memoq file download <GUID> -d <DOC_GUID> -o ./out/doc.xliff -f xliff
+        memoq file download <GUID> -o ./exports --overwrite
+    """
     cfg = ctx.obj.get("config")
     fm = FileManager()
 
@@ -145,7 +181,12 @@ def file_download(ctx, project_guid, document_guid, output, export_format, overw
               help="XLIFF/mqxliff file path")
 @click.pass_context
 def file_import_xliff(ctx, project_guid, path):
-    """Import XLIFF/mqxliff to update a document"""
+    """导入 XLIFF/mqxliff 回填文档 / Import XLIFF/mqxliff to update a document
+
+    \b
+    示例 / Example:
+        memoq file import-xliff <GUID> -p ./doc.mqxliff
+    """
     fm = FileManager()
 
     click.echo(f"\nImport XLIFF")

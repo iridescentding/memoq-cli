@@ -13,7 +13,13 @@ from ..utils import output_json, handle_api_error
 
 @click.group()
 def template():
-    """Project Template management commands"""
+    """项目模板管理命令 / Project Template management commands
+
+    \b
+    子命令 / Subcommands:
+        list    列出所有项目模板 / List all project templates
+        info    查看模板详情 / Show template details
+    """
     pass
 
 
@@ -24,14 +30,20 @@ def template():
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
 def template_list(ctx, filter_text, language_filter, limit, as_json):
-    """List all project templates
+    """列出所有项目模板 / List all project templates
 
     \b
-    Examples:
+    参数 / Options:
+        -f/--filter    按名称/描述过滤 (服务器端) / Filter by name/description
+        -l/--lang      按语言代码过滤 / Filter by language (e.g. en-US)
+        -n/--limit     返回数量上限 / Result limit
+
+    \b
+    示例 / Examples:
         memoq template list
-        memoq template list --filter "Translation"
-        memoq template list --lang en-US
-        memoq template list --json
+        memoq template list -f "Translation"
+        memoq template list -l en-US
+        memoq template list -n 20 --json
     """
     try:
         manager = ProjectTemplateManager()
@@ -79,12 +91,12 @@ def template_list(ctx, filter_text, language_filter, limit, as_json):
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
 def template_info(ctx, template_guid, as_json):
-    """Get project template details
+    """查看项目模板详情 / Get project template details
 
     \b
-    Examples:
-        memoq template info <guid>
-        memoq template info <guid> --json
+    示例 / Examples:
+        memoq template info <TEMPLATE_GUID>
+        memoq template info <TEMPLATE_GUID> --json
     """
     try:
         manager = ProjectTemplateManager()

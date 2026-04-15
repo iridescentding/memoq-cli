@@ -4,11 +4,119 @@ A command-line tool for managing memoQ Server - handle projects, files, translat
 
 ## Table of Contents
 
+- [For AI Agents / Programmatic Use](#for-ai-agents--programmatic-use)
+- [Runtime & Server Sizing](#runtime--server-sizing)
 - [What You Need](#what-you-need)
 - [Installation (Step by Step)](#installation-step-by-step)
 - [Quick Start](#quick-start)
 - [Commands Reference](#commands-reference)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## For AI Agents / Programmatic Use
+
+This CLI is a thin local client over memoQ Server's WSAPI (SOAP) and RSAPI
+(REST). An agent should treat it as a shell-invoked JSON tool.
+
+### Invocation contract
+
+- **Entry point:** `python -m memoq_cli.cli <group> <command> [args]`
+  (or the `memoq` console script if on `PATH`).
+- **Config discovery order:** `-c <path>` → `./config.json` → `~/.memoq/config.json` → `~/.config/memoq/config.json`.
+  Set `-c` explicitly in automation to avoid ambiguity.
+- **Machine output:** pass `--json` on any read command to get a raw dict/list
+  on stdout. Without `--json`, output is human-formatted tables/text.
+- **Exit codes:** `0` on success, non-zero on error. Human-readable errors go
+  to stderr; use `-v` for tracebacks, `-q` to suppress info logs,
+  `--soap-debug` to dump raw SOAP XML (noisy, for debugging only).
+- **Idempotency:** `list` / `info` / `search` / `lookup` / `export` /
+  `download` / `stats` are safe to retry. `create` / `delete` /
+  `import` / `assign` / `upload` / `entry-*` mutate server state.
+- **Destructive commands** (`tm delete`, `tb delete`, `entry-delete`) prompt
+  by default; pass `-y` to skip in automation.
+
+### Minimal automation recipe
+
+```bash
+# 1. Point at an explicit config
+export MEMOQ="python -m memoq_cli.cli -c ./config.json"
+
+# 2. Discover GUIDs as JSON
+$MEMOQ project list --json          # -> list of {Guid, Name, ...}
+$MEMOQ tm list --json
+$MEMOQ tb list --json
+$MEMOQ template list --json
+
+# 3. Drive per-object commands with those GUIDs
+$MEMOQ project docs <PROJECT_GUID> -d --json
+$MEMOQ project stats <PROJECT_GUID> -F CSV_MemoQ --json
+$MEMOQ tm search <TM_GUID> "text" -t 80 --json
+```
+
+### Command surface (one line each)
+
+| Group | Commands |
+|-------|----------|
+| top-level | `init`, `test`, `config`, `--version` |
+| `project` | `list`, `info`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs userassign` |
+| `file` | `upload`, `download`, `import-xliff` |
+| `tm` | `list`, `info`, `create`, `delete`, `import`, `export`, `search`, `concordance`, `lookup`, `metascheme`, `entry`, `entry-add`, `entry-update`, `entry-delete` |
+| `tb` | `list`, `info`, `create`, `delete`, `add`, `search`, `lookup`, `metadefs`, `import`, `export`, `entry`, `entry-update`, `entry-delete`, `entry-meta`, `language-meta`, `term-meta` |
+| `template` | `list`, `info` |
+| `resource` | `listall`, `importnewfilter` |
+
+Run any command with `--help` to get flags; most read commands accept `--json`,
+most list commands accept `-f <name-filter>` and `-n <limit>`.
+
+### Agent guardrails
+
+- Always call `memoq test` once before a batch run — it validates WSAPI/RSAPI
+  reachability and credentials cheaply.
+- Server calls are network-bound; expect seconds-to-minutes for `project stats`,
+  `file upload -t dir/zip`, and `tm import`/`export`. Budget timeouts ≥ 5 min
+  for those.
+- Language codes are memoQ-style (`eng`, `zho-CN`, `kor`, `de-DE`) — not
+  ISO-639-1. Pull them from `project info` / `tm list` output rather than
+  guessing.
+- Treat GUIDs as opaque; never construct them.
+
+---
+
+## Runtime & Server Sizing
+
+**Short answer:** this CLI is a client, not a server. Any modern small VM or
+container that can run Python 3.9+ is sufficient. The heavy lifting happens on
+the memoQ Server you point it at.
+
+### If an AI runs this CLI in a sandbox/VM
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 1 vCPU | 2 vCPU |
+| RAM | 512 MB | 1–2 GB (WSDL parsing + large XLIFF/TMX transfers use transient memory) |
+| Disk | 300 MB (venv + deps) | 2–10 GB (working space for uploads/downloads, TMX/XLIFF exports) |
+| Network | outbound HTTPS to memoQ Server on WSAPI/RSAPI ports (commonly 8080/8081/8082) | low-latency link to the memoQ Server; throughput matters for bulk file/TM transfers |
+| OS | Linux/macOS/Windows | Linux container (Debian/Ubuntu slim, Alpine works with glibc variant) |
+| Python | 3.9 | 3.11 |
+
+Typical AWS/GCP/Azure equivalents: **t3.micro / e2-small / B1s** is enough
+for interactive agent use; step up to **t3.small–medium** if the agent does
+concurrent bulk TM/TMX imports or multi-GB file transfers.
+
+### What actually drives load
+
+- **SOAP WSDL parse** on first WSAPI call (one-off ~50–100 MB peak).
+- **File/TM/TB transfers** stream through local disk; size your `/tmp` or
+  working dir to ≥ the largest bundle you expect (typical: 100 MB–2 GB).
+- **`project stats`** is server-side work on memoQ; the client just waits.
+- No persistent daemon, no background workers, no database locally.
+
+### What the memoQ Server needs
+
+Out of scope for this repo — follow Kilgray/memoQ's official sizing guidance.
+This CLI adds negligible load (one authenticated SOAP/REST session per
+command invocation).
 
 ---
 
@@ -266,13 +374,17 @@ memoq file import-xliff <PROJECT_GUID> -p ./translated.xliff
 memoq tm list
 
 # Filter by name and language
-memoq tm list -f "project" -s en-US -t zh-CN
+memoq tm list -f "project" -s eng -t zho-CN
 
 # Get TM details
 memoq tm info <TM_GUID>
 
 # Create new TM
-memoq tm create -n "My TM" -s en-US -t zh-CN
+memoq tm create -n "My TM" -s eng -t zho-CN
+
+# Delete TM (asks for confirmation)
+memoq tm delete <TM_GUID>
+memoq tm delete <TM_GUID> -y    # skip confirmation
 
 # Import TMX file
 memoq tm import <TM_GUID> -p ./memory.tmx
@@ -280,11 +392,27 @@ memoq tm import <TM_GUID> -p ./memory.tmx
 # Export TM to TMX
 memoq tm export <TM_GUID> -o ./exported.tmx
 
-# Search TM (with custom threshold)
+# Search TM (with custom threshold, default 75%)
+memoq tm search <TM_GUID> "search text"
 memoq tm search <TM_GUID> "search text" -t 80
 
-# Delete TM (careful!)
-memoq tm delete <TM_GUID>
+# Concordance search
+memoq tm concordance <TM_GUID> "search term"
+memoq tm concordance <TM_GUID> term1 term2    # multiple terms
+
+# Lookup segments (auto-wraps plain text in <seg> tags)
+memoq tm lookup <TM_GUID> "Hello world"
+memoq tm lookup <TM_GUID> "segment 1" "segment 2"
+
+# Get custom metadata scheme
+memoq tm metascheme <TM_GUID>
+
+# Entry operations
+memoq tm entry <TM_GUID> <ENTRY_ID>                         # get entry
+memoq tm entry-add <TM_GUID> -s "Hello" -t "你好"            # add entry
+memoq tm entry-add <TM_GUID> -s "Hello" -t "你好" -m "user"  # with modifier
+memoq tm entry-update <TM_GUID> <ENTRY_ID> -s "Hi" -t "你好" # update entry
+memoq tm entry-delete <TM_GUID> <ENTRY_ID>                   # delete entry
 ```
 
 ### TB (Terminology Base) Commands
@@ -292,30 +420,49 @@ memoq tm delete <TM_GUID>
 ```bash
 # List all TBs
 memoq tb list
+memoq tb list -f "project"    # filter by name
 
 # Get TB details
 memoq tb info <TB_GUID>
 
-# Create new TB
-memoq tb create -n "My TB" -l en-US -l zh-CN
+# Create new TB (multi-language)
+memoq tb create -n "My TB" -l zho-CN -l eng
 
-# Add a term
-memoq tb add <TB_GUID> -t "en-US:computer" -t "zh-CN:电脑"
+# Delete TB (asks for confirmation)
+memoq tb delete <TB_GUID>
+memoq tb delete <TB_GUID> -y    # skip confirmation
 
-# Add a term with definition and domain
-memoq tb add <TB_GUID> -t "en-US:RAM" -t "zh-CN:内存" -d "Random Access Memory" --domain "IT"
+# Add a term entry
+memoq tb add <TB_GUID> -t "eng:computer" -t "zho-CN:电脑"
+memoq tb add <TB_GUID> -t "eng:RAM" -t "zho-CN:内存" -d "Random Access Memory" --domain "IT"
 
-# Search TB
-memoq tb search <TB_GUID> "computer"
+# Search TB (requires target language)
+memoq tb search <TB_GUID> "Attack" -t eng
+memoq tb search <TB_GUID> "攻击" -t zho-CN
+memoq tb search <TB_GUID> "Attack" -t eng -c exact    # exact match
+memoq tb search <TB_GUID> "Att" -t eng -c begins      # begins with
 
-# Import CSV
+# Lookup terms in segments (requires source language)
+memoq tb lookup <TB_GUID> "攻击测试" -s zho-CN -t eng
+memoq tb lookup <TB_GUID> "seg1" "seg2" -s zho-CN     # multiple segments
+
+# Get metadata definitions
+memoq tb metadefs <TB_GUID>
+
+# Import / Export
 memoq tb import <TB_GUID> -p ./terms.csv
-
-# Export to CSV
 memoq tb export <TB_GUID> -o ./terms.csv
 
-# Delete TB (careful!)
-memoq tb delete <TB_GUID>
+# Entry operations
+memoq tb entry <TB_GUID> <ENTRY_ID>                             # get entry
+memoq tb entry-update <TB_GUID> <ENTRY_ID> -t "eng:Attack"      # update terms
+memoq tb entry-delete <TB_GUID> <ENTRY_ID>                      # delete entry
+
+# Metadata operations (for custom metadata fields)
+memoq tb entry-meta <TB_GUID> <ENTRY_ID> <META_NAME>              # get
+memoq tb entry-meta <TB_GUID> <ENTRY_ID> <META_NAME> --set "val"  # set
+memoq tb language-meta <TB_GUID> <ENTRY_ID> <META_NAME> -l eng    # language-level
+memoq tb term-meta <TB_GUID> <ENTRY_ID> <META_NAME> --term-id 1   # term-level
 ```
 
 ### Template Commands

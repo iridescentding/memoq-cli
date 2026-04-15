@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 memoQ CLI - TM Commands
+
+Supported via RSAPI:
+  list, info, concordance, lookup, metascheme,
+  entry, entry-add, entry-update, entry-delete
+
+NOT supported via RSAPI (need WSAPI):
+  create, delete, import, export, search
 """
 
-import sys
 import click
 
 from ..rsapi import TMManager
@@ -12,7 +18,15 @@ from ..utils import output_json, handle_api_error
 
 @click.group()
 def tm():
-    """Translation Memory (TM) management commands"""
+    """翻译记忆库 (TM) 管理命令 / Translation Memory (TM) management commands
+
+    \b
+    通过 RSAPI 支持 / Supported via RSAPI:
+        list, info, concordance, lookup, metascheme,
+        entry, entry-add, entry-update, entry-delete
+    不支持 (需 WSAPI) / Not supported via RSAPI:
+        create, delete, import, export, search
+    """
     pass
 
 
@@ -24,7 +38,15 @@ def tm():
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
 def tm_list(ctx, filter_text, source, target, limit, as_json):
-    """List all TMs"""
+    """列出所有 TM / List all TMs
+
+    \b
+    示例 / Examples:
+        memoq tm list
+        memoq tm list -f "workingTM"
+        memoq tm list -s zho-CN -t eng
+        memoq tm list -n 20 --json
+    """
     try:
         tmm = TMManager()
         tms = tmm.list_tms(filter_text, source, target)
@@ -57,7 +79,7 @@ def tm_list(ctx, filter_text, source, target, limit, as_json):
             click.echo("-" * 70)
 
     except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
 
 
 @tm.command("info")
@@ -65,7 +87,13 @@ def tm_list(ctx, filter_text, source, target, limit, as_json):
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
 def tm_info(ctx, tm_guid, as_json):
-    """Get TM details"""
+    """查看 TM 详情 / Get TM details
+
+    \b
+    示例 / Examples:
+        memoq tm info <TM_GUID>
+        memoq tm info <TM_GUID> --json
+    """
     try:
         tmm = TMManager()
         info = tmm.get_tm_info(tm_guid)
@@ -84,146 +112,291 @@ def tm_info(ctx, tm_guid, as_json):
         click.echo(f"  Description: {info.get('Description', 'N/A')}")
 
     except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
 
 
-@tm.command("create")
-@click.option("--name", "-n", required=True, prompt="TM name", help="TM name")
-@click.option("--source", "-s", required=True, prompt="Source language", help="Source language code")
-@click.option("--target", "-t", required=True, prompt="Target language", help="Target language code")
-@click.option("--desc", "-d", default="", help="Description")
-@click.pass_context
-def tm_create(ctx, name, source, target, desc):
-    """Create a new TM"""
-    try:
-        tmm = TMManager()
-
-        click.echo(f"\nCreating TM")
-        click.echo(f"   Name:      {name}")
-        click.echo(f"   Languages: {source} -> {target}")
-        if desc:
-            click.echo(f"   Description: {desc}")
-        click.echo()
-
-        result = tmm.create_tm(name, source, target, desc)
-        click.echo(f"Done: TM created!")
-        click.echo(f"   GUID: {result.get('TMGuid', 'N/A')}")
-
-    except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
-
-
-@tm.command("delete")
+@tm.command("concordance")
 @click.argument("tm_guid")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
-@click.pass_context
-def tm_delete(ctx, tm_guid, yes):
-    """Delete a TM (irreversible!)"""
-    if not yes:
-        click.confirm(f"Delete TM {tm_guid}? This cannot be undone!", abort=True)
-
-    try:
-        tmm = TMManager()
-        tmm.delete_tm(tm_guid)
-        click.echo(f"Done: TM deleted: {tm_guid}")
-
-    except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
-
-
-@tm.command("import")
-@click.argument("tm_guid")
-@click.option("--path", "-p", required=True, type=click.Path(exists=True),
-              help="TMX file path")
-@click.option("--wait/--no-wait", default=True, help="Wait for import to complete")
-@click.pass_context
-def tm_import(ctx, tm_guid, path, wait):
-    """Import TMX into a TM"""
-    try:
-        tmm = TMManager()
-
-        click.echo(f"\nImporting TMX")
-        click.echo(f"   File: {path}")
-        click.echo(f"   TM:   {tm_guid}")
-        click.echo()
-
-        if wait:
-            click.echo("Importing (please wait)...")
-            result = tmm.import_tmx(tm_guid, path, wait_for_completion=True)
-            click.echo("Done: TMX import successful!")
-        else:
-            result = tmm.import_tmx(tm_guid, path, wait_for_completion=False)
-            click.echo("Done: Import task submitted!")
-            if "TaskId" in result:
-                click.echo(f"   Task ID: {result['TaskId']}")
-
-    except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
-
-
-@tm.command("export")
-@click.argument("tm_guid")
-@click.option("--output", "-o", required=True, type=click.Path(), help="Output file path")
-@click.option("--wait/--no-wait", default=True, help="Wait for export to complete")
-@click.pass_context
-def tm_export(ctx, tm_guid, output, wait):
-    """Export TM as TMX"""
-    try:
-        tmm = TMManager()
-
-        click.echo(f"\nExporting TM")
-        click.echo(f"   TM:     {tm_guid}")
-        click.echo(f"   Output: {output}")
-        click.echo()
-
-        if wait:
-            click.echo("Exporting (please wait)...")
-            result = tmm.export_tmx(tm_guid, output)
-            click.echo(f"Done: Exported to {result}")
-        else:
-            result = tmm.export_tmx(tm_guid, output)
-            click.echo("Done: Export task submitted!")
-
-    except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
-
-
-@tm.command("search")
-@click.argument("tm_guid")
-@click.argument("text")
-@click.option("--threshold", "-t", default=75, type=int,
-              help="Match threshold (0-100), default 75")
-@click.option("--limit", "-n", type=int, help="Limit number of results")
+@click.argument("expression", nargs=-1, required=True)
+@click.option("--limit", "-n", type=int, default=64, help="Max results (default 64)")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
-def tm_search(ctx, tm_guid, text, threshold, limit, as_json):
-    """Search TM for matches"""
+def tm_concordance(ctx, tm_guid, expression, limit, as_json):
+    """在 TM 中做 Concordance 搜索 / Concordance search in a TM
+
+    \b
+    参数 / Arguments:
+        TM_GUID       TM GUID
+        EXPRESSION    一个或多个搜索词 / One or more search terms
+
+    \b
+    示例 / Examples:
+        memoq tm concordance <TM_GUID> "search term"
+        memoq tm concordance <TM_GUID> term1 term2
+        memoq tm concordance <TM_GUID> "term" -n 20 --json
+    """
     try:
         tmm = TMManager()
-        results = tmm.search_tm(tm_guid, text, threshold)
-
-        if limit:
-            results = results[:limit]
+        options = {"ResultsLimit": limit} if limit != 64 else None
+        result = tmm.concordance(tm_guid, list(expression), options)
 
         if as_json:
-            output_json(results)
+            output_json(result)
             return
 
-        if not results:
-            click.echo("No matches found")
-            return
-
-        click.echo(f"\nFound {len(results)} match(es):\n")
-
-        for i, r in enumerate(results, 1):
-            source = r.get("SourceSegment", "")
-            target = r.get("TargetSegment", "")
-            match = r.get("MatchRate", 0)
-
-            click.echo(f"  {i}. [{match}%]")
-            click.echo(f"     Source: {source}")
-            click.echo(f"     Target: {target}")
-            click.echo()
+        # Try to display results based on actual response structure
+        if isinstance(result, list):
+            if not result:
+                click.echo("No concordance matches found")
+                return
+            click.echo(f"\nFound {len(result)} concordance match(es):\n")
+            for i, r in enumerate(result, 1):
+                entry = r.get("TMEntry", r)
+                source = entry.get("SourceSegment", "")
+                target = entry.get("TargetSegment", "")
+                click.echo(f"  {i}.")
+                click.echo(f"     Source: {source}")
+                click.echo(f"     Target: {target}")
+                click.echo()
+        elif isinstance(result, dict):
+            conc_results = result.get("ConcResult") or []
+            total = result.get("TotalConcResult") or len(conc_results)
+            if not conc_results:
+                click.echo("No concordance matches found")
+                return
+            click.echo(f"\nFound {total} concordance match(es):\n")
+            for i, r in enumerate(conc_results, 1):
+                entry = r.get("TMEntry", r)
+                source = entry.get("SourceSegment", "")
+                target = entry.get("TargetSegment", "")
+                click.echo(f"  {i}.")
+                click.echo(f"     Source: {source}")
+                click.echo(f"     Target: {target}")
+                click.echo()
+        else:
+            output_json(result)
 
     except Exception as e:
-        handle_api_error(e, ctx.obj.get("verbose", False))
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
+
+
+@tm.command("lookup")
+@click.argument("tm_guid")
+@click.argument("segments", nargs=-1, required=True)
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def tm_lookup(ctx, tm_guid, segments, as_json):
+    """在 TM 中做段落查询 / Lookup segments in a TM
+
+    \b
+    段落格式 / Segment format:
+        纯文本会自动用 <seg>...</seg> 包装。
+        Plain text is auto-wrapped with <seg>...</seg>.
+
+    \b
+    示例 / Examples:
+        memoq tm lookup <TM_GUID> "Hello world"
+        memoq tm lookup <TM_GUID> "<seg>Hello world</seg>"
+        memoq tm lookup <TM_GUID> "句一" "句二" --json
+    """
+    try:
+        tmm = TMManager()
+        # Wrap plain text in <seg> tags if not already
+        wrapped = []
+        for s in segments:
+            if not s.startswith("<seg>"):
+                s = f"<seg>{s}</seg>"
+            wrapped.append(s)
+
+        result = tmm.lookup_segments(tm_guid, wrapped)
+
+        if as_json:
+            output_json(result)
+            return
+
+        # Handle both possible response structures
+        if isinstance(result, dict):
+            results_list = result.get("Result", result.get("Results", []))
+        elif isinstance(result, list):
+            results_list = result
+        else:
+            click.echo("No lookup results")
+            return
+
+        if not results_list:
+            click.echo("No lookup results")
+            return
+
+        for seg_idx, seg_result in enumerate(results_list):
+            hits = seg_result.get("TMHits", [])
+            click.echo(f"\nSegment {seg_idx + 1}: {segments[seg_idx]}")
+
+            if not hits:
+                click.echo("  No matches")
+                continue
+
+            for i, hit in enumerate(hits, 1):
+                match_rate = hit.get("MatchRate", 0)
+                tu = hit.get("TransUnit", hit)
+                source = tu.get("SourceSegment", "")
+                target = tu.get("TargetSegment", "")
+
+                click.echo(f"  {i}. [{match_rate}%]")
+                click.echo(f"     Source: {source}")
+                click.echo(f"     Target: {target}")
+
+        click.echo()
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
+
+
+@tm.command("metascheme")
+@click.argument("tm_guid")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def tm_metascheme(ctx, tm_guid, as_json):
+    """查看 TM 自定义元数据方案 / Get custom metadata scheme of a TM
+
+    \b
+    示例 / Example:
+        memoq tm metascheme <TM_GUID>
+    """
+    try:
+        tmm = TMManager()
+        result = tmm.get_custom_meta_scheme(tm_guid)
+
+        output_json(result)
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
+
+
+@tm.command("entry")
+@click.argument("tm_guid")
+@click.argument("entry_id", type=int)
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def tm_entry_get(ctx, tm_guid, entry_id, as_json):
+    """根据 ID 查询 TM 条目 / Get a specific TM entry by ID
+
+    \b
+    示例 / Examples:
+        memoq tm entry <TM_GUID> 1
+        memoq tm entry <TM_GUID> 42 --json
+    """
+    try:
+        tmm = TMManager()
+        entry = tmm.get_entry(tm_guid, entry_id)
+
+        if as_json:
+            output_json(entry)
+            return
+
+        click.echo(f"\nTM Entry (ID: {entry_id}):\n")
+        click.echo(f"  Source:   {entry.get('SourceSegment', 'N/A')}")
+        click.echo(f"  Target:   {entry.get('TargetSegment', 'N/A')}")
+        click.echo(f"  Creator:  {entry.get('Creator', 'N/A')}")
+        click.echo(f"  Created:  {entry.get('Created', 'N/A')}")
+        click.echo(f"  Modifier: {entry.get('Modifier', 'N/A')}")
+        click.echo(f"  Modified: {entry.get('Modified', 'N/A')}")
+        click.echo(f"  Client:   {entry.get('Client', '')}")
+        click.echo(f"  Domain:   {entry.get('Domain', '')}")
+        click.echo(f"  Project:  {entry.get('Project', '')}")
+        click.echo(f"  Subject:  {entry.get('Subject', '')}")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
+
+
+@tm.command("entry-add")
+@click.argument("tm_guid")
+@click.option("--source", "-s", required=True, prompt="Source segment", help="Source text")
+@click.option("--target", "-t", required=True, prompt="Target segment", help="Target text")
+@click.option("--modifier", "-m", default="", help="Modifier username")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def tm_entry_add(ctx, tm_guid, source, target, modifier, as_json):
+    """向 TM 添加条目 / Add an entry to a TM
+
+    \b
+    参数 / Options:
+        -s/--source    源语言文本 / Source text (自动包 <seg>)
+        -t/--target    目标语言文本 / Target text (自动包 <seg>)
+        -m/--modifier  修改人用户名 / Modifier username
+
+    \b
+    示例 / Examples:
+        memoq tm entry-add <TM_GUID> -s "Hello" -t "你好"
+        memoq tm entry-add <TM_GUID> -s "Project" -t "项目" -m jayding
+    """
+    try:
+        tmm = TMManager()
+        if not source.startswith("<seg>"):
+            source = f"<seg>{source}</seg>"
+        if not target.startswith("<seg>"):
+            target = f"<seg>{target}</seg>"
+
+        result = tmm.create_entry(tm_guid, source, target, modifier)
+
+        if as_json:
+            output_json(result)
+            return
+
+        click.echo("Done: Entry added to TM")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
+
+
+@tm.command("entry-update")
+@click.argument("tm_guid")
+@click.argument("entry_id", type=int)
+@click.option("--source", "-s", required=True, prompt="Source segment", help="Source text")
+@click.option("--target", "-t", required=True, prompt="Target segment", help="Target text")
+@click.option("--modifier", "-m", default="", help="Modifier username")
+@click.pass_context
+def tm_entry_update(ctx, tm_guid, entry_id, source, target, modifier):
+    """更新 TM 条目 / Update a TM entry
+
+    \b
+    示例 / Example:
+        memoq tm entry-update <TM_GUID> 42 -s "Hello" -t "你好" -m jayding
+    """
+    try:
+        tmm = TMManager()
+        if not source.startswith("<seg>"):
+            source = f"<seg>{source}</seg>"
+        if not target.startswith("<seg>"):
+            target = f"<seg>{target}</seg>"
+
+        tmm.update_entry(tm_guid, entry_id, source, target, modifier)
+        click.echo(f"Done: Entry {entry_id} updated")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)
+
+
+@tm.command("entry-delete")
+@click.argument("tm_guid")
+@click.argument("entry_id", type=int)
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def tm_entry_delete(ctx, tm_guid, entry_id, yes):
+    """删除 TM 条目 / Delete a TM entry
+
+    \b
+    示例 / Examples:
+        memoq tm entry-delete <TM_GUID> 42
+        memoq tm entry-delete <TM_GUID> 42 -y      # 跳过确认 / skip confirm
+    """
+    if not yes:
+        click.confirm(f"Delete entry {entry_id} from TM? This cannot be undone!", abort=True)
+
+    try:
+        tmm = TMManager()
+        tmm.delete_entry(tm_guid, entry_id)
+        click.echo(f"Done: Entry {entry_id} deleted")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False) if ctx.obj else False)

@@ -23,6 +23,7 @@ WSAPI_SERVICES = {
     "Resource": "resource?wsdl",
     "TM": "tm?wsdl",
     "TB": "tb?wsdl",
+    "Tasks": "tasks?wsdl",
 }
 
 # Global flag for SOAP debug logging
