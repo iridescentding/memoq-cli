@@ -15,11 +15,19 @@ from memoq_cli.wsapi.client import WSAPIClient
 from memoq_cli.wsapi.file_manager import FileManager
 
 
-# Skip if no config.json (CI environment)
-pytestmark = pytest.mark.skipif(
-    not os.path.exists("config.json"),
-    reason="No config.json found, skip integration test"
-)
+RUN_INTEGRATION = os.getenv("MEMOQ_RUN_INTEGRATION") == "1"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not RUN_INTEGRATION,
+        reason="Set MEMOQ_RUN_INTEGRATION=1 to run real memoQ integration tests",
+    ),
+    pytest.mark.skipif(
+        not os.path.exists("config.json"),
+        reason="No config.json found, skip integration test",
+    ),
+]
 
 RESOURCE_NS = "http://kilgray.com/memoqservices/2007"
 

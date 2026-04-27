@@ -19,6 +19,8 @@ def project():
     子命令 / Subcommands:
         list     列出所有项目 / List all projects
         info     查看项目详情 / Show project details
+        new      新建项目 / Create a new project
+        createfromtemplate  从模板创建项目 / Create from template
         update   更新项目头信息 / Update project header
         docs     列出/管理项目文档 / List/manage project documents
         users    列出/管理项目成员 / List/manage project members
@@ -119,6 +121,287 @@ def project_info(ctx, project_guid, as_json):
         click.echo(f"  Deadline:    {info.get('Deadline', 'N/A')}")
         click.echo(f"  Creator:     {info.get('CreatorUser', 'N/A')}")
         click.echo(f"  Description: {info.get('Description', 'N/A')}")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+def _split_lang_values(values):
+    """Accept repeated options and comma-separated language lists."""
+    result = []
+    for value in values or []:
+        for item in str(value).split(","):
+            item = item.strip()
+            if item:
+                result.append(item)
+    return result
+
+
+def _prompt_langs_if_missing(target_langs):
+    langs = _split_lang_values(target_langs)
+    if langs:
+        return langs
+
+    raw = click.prompt("Target language code(s), comma-separated")
+    return _split_lang_values([raw])
+
+
+def _prompt_optional_defaults(kwargs):
+    """Ask for common optional values while keeping memoQ defaults otherwise."""
+    default_deadline = kwargs.get("deadline")
+    if default_deadline is not None:
+        if hasattr(default_deadline, "strftime"):
+            default_deadline = default_deadline.strftime("%Y-%m-%d")
+        deadline_str = click.prompt(
+            "Deadline (YYYY-MM-DD)", default=default_deadline
+        )
+        kwargs["deadline"] = _parse_deadline(deadline_str)
+
+    kwargs["description"] = click.prompt(
+        "Description", default=kwargs.get("description") or "", show_default=False
+    ) or None
+    kwargs["client_attr"] = click.prompt(
+        "Client", default=kwargs.get("client_attr") or "", show_default=False
+    ) or None
+    kwargs["domain"] = click.prompt(
+        "Domain", default=kwargs.get("domain") or "", show_default=False
+    ) or None
+    kwargs["project_attr"] = click.prompt(
+        "Project attribute", default=kwargs.get("project_attr") or "",
+        show_default=False
+    ) or None
+    kwargs["subject"] = click.prompt(
+        "Subject", default=kwargs.get("subject") or "", show_default=False
+    ) or None
+    kwargs["callback_url"] = click.prompt(
+        "Callback URL", default=kwargs.get("callback_url") or "",
+        show_default=False
+    ) or None
+    kwargs["download_preview2"] = click.confirm(
+        "Create/download preview files?", default=kwargs.get("download_preview2", False)
+    )
+    kwargs["download_skeleton2"] = click.confirm(
+        "Include skeleton files for export?", default=kwargs.get("download_skeleton2", False)
+    )
+    kwargs["record_version_history"] = click.confirm(
+        "Enable document version history?", default=kwargs.get("record_version_history", False)
+    )
+    kwargs["enable_split_join"] = click.confirm(
+        "Allow users to split/join segments?", default=kwargs.get("enable_split_join", False)
+    )
+    return kwargs
+
+
+def _parse_deadline(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise click.ClickException("Invalid deadline format. Use YYYY-MM-DD.")
+
+
+def _default_project_deadline():
+    return (
+        datetime.now() + timedelta(days=14)
+    ).replace(hour=9, minute=0, second=0, microsecond=0)
+
+
+def _resolve_creator_user(pm, creator_user, cfg):
+    """Resolve an omitted creator to the configured memoQ username's UserGuid."""
+    if creator_user:
+        return creator_user
+
+    username = cfg.username if cfg and hasattr(cfg, "username") else ""
+    if not username:
+        raise click.ClickException(
+            "Creator user is required. Pass --creator-user, or set auth.username."
+        )
+
+    users = pm.list_users(active_only=True)
+    username_norm = username.casefold()
+    for user in users:
+        user_name = str(user.get("UserName", ""))
+        full_name = str(user.get("FullName", ""))
+        if user_name.casefold() == username_norm or full_name.casefold() == username_norm:
+            user_guid = user.get("UserGuid")
+            if user_guid:
+                return str(user_guid)
+
+    raise click.ClickException(
+        f"Could not find active memoQ user matching auth.username={username!r}. "
+        "Pass --creator-user explicitly."
+    )
+
+
+def _echo_create_summary(title, values):
+    click.echo(f"\n{title}\n")
+    for key, value in values.items():
+        if value is None or value == []:
+            continue
+        click.echo(f"  {key}: {value}")
+
+
+@project.command("createfromtemplate")
+@click.argument("template_guid")
+@click.option("--creator-user", "-u", default=None,
+              help="Creator user GUID; defaults to auth.username's UserGuid")
+@click.option("--name", "-n", default=None, help="Project name override")
+@click.option("--source-lang", "-s", default=None,
+              help="Source language override (e.g. eng, zho-CN)")
+@click.option("--target-lang", "-l", multiple=True,
+              help="Target language override; repeat or comma-separate")
+@click.option("--desc", "description", default=None, help="Description")
+@click.option("--client", "client_attr", default=None, help="Client attribute")
+@click.option("--domain", default=None, help="Domain attribute")
+@click.option("--project-attr", default=None, help="Project attribute")
+@click.option("--subject", default=None, help="Subject attribute")
+@click.option("--aspect", "project_creation_aspects", multiple=True,
+              help="ProjectCreationAspects value; repeat for multiple")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def project_create_from_template(
+    ctx, template_guid, creator_user, name, source_lang, target_lang,
+    description, client_attr, domain, project_attr, subject,
+    project_creation_aspects, yes, as_json
+):
+    """通过模板创建项目 / Create a server project from a template."""
+    target_langs = _split_lang_values(target_lang)
+    aspects = _split_lang_values(project_creation_aspects)
+    pm = ProjectManager()
+    creator_user = _resolve_creator_user(
+        pm, creator_user, ctx.obj.get("config") if ctx.obj else None
+    )
+
+    kwargs = {
+        "template_guid": template_guid,
+        "creator_user": creator_user,
+        "name": name,
+        "source_language_code": source_lang,
+        "target_language_codes": target_langs or None,
+        "description": description,
+        "client_attr": client_attr,
+        "domain": domain,
+        "project_attr": project_attr,
+        "subject": subject,
+        "project_creation_aspects": aspects or None,
+    }
+
+    if not yes:
+        _echo_create_summary("Create Project From Template", kwargs)
+        if not click.confirm("\nCreate project with these values?", default=False):
+            click.echo("Cancelled.")
+            return
+
+    try:
+        result = pm.create_project_from_template(**kwargs)
+
+        if as_json:
+            output_json(result)
+            return
+
+        project_guid = result.get("ProjectGuid", result.get("projectGuid", "N/A"))
+        click.echo("\nDone: Project created from template!")
+        click.echo(f"  Project GUID: {project_guid}")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
+@project.command("new")
+@click.option("--name", "-n", prompt=True, help="Project name")
+@click.option("--creator-user", "-u", default=None,
+              help="Creator user GUID; defaults to auth.username's UserGuid")
+@click.option("--source-lang", "-s", prompt=True,
+              help="Source language code (e.g. eng, zho-CN)")
+@click.option("--target-lang", "-l", multiple=True,
+              help="Target language code; repeat or comma-separate")
+@click.option("--desc", "description", default=None, help="Description")
+@click.option("--client", "client_attr", default=None, help="Client attribute")
+@click.option("--domain", default=None, help="Domain attribute")
+@click.option("--project-attr", default=None, help="Project attribute")
+@click.option("--subject", default=None, help="Subject attribute")
+@click.option("--deadline", default=None, help="Deadline (YYYY-MM-DD)")
+@click.option("--callback-url", default=None, help="Callback web service URL")
+@click.option("--allow-package-creation", is_flag=True, default=False,
+              help="Allow package creation (default false)")
+@click.option("--allow-overlapping-workflow", is_flag=True, default=False,
+              help="Allow overlapping workflow phases (default false)")
+@click.option("--download-preview", is_flag=True, default=False,
+              help="Create/download preview files (default false)")
+@click.option("--download-skeleton", is_flag=True, default=False,
+              help="Include skeleton files for export (default false)")
+@click.option("--record-version-history", is_flag=True, default=False,
+              help="Enable document version history (default false)")
+@click.option("--enable-split-join", is_flag=True, default=False,
+              help="Allow split/join in Desktop Docs projects (default false)")
+@click.option("--edit-defaults", is_flag=True,
+              help="Prompt for common optional/default values before creation")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def project_new(
+    ctx, name, creator_user, source_lang, target_lang, description, client_attr,
+    domain, project_attr, subject, deadline, callback_url, allow_package_creation,
+    allow_overlapping_workflow, download_preview, download_skeleton,
+    record_version_history, enable_split_join, edit_defaults, yes, as_json
+):
+    """创建新的 Desktop Docs 服务器项目 / Create a new server project."""
+    try:
+        target_langs = _prompt_langs_if_missing(target_lang)
+        deadline_dt = _parse_deadline(deadline) or _default_project_deadline()
+        pm = ProjectManager()
+        creator_user = _resolve_creator_user(
+            pm, creator_user, ctx.obj.get("config") if ctx.obj else None
+        )
+
+        kwargs = {
+            "name": name,
+            "creator_user": creator_user,
+            "source_language_code": source_lang,
+            "target_language_codes": target_langs,
+            "description": description,
+            "client_attr": client_attr,
+            "domain": domain,
+            "project_attr": project_attr,
+            "subject": subject,
+            "deadline": deadline_dt,
+            "callback_url": callback_url,
+            "allow_package_creation": allow_package_creation,
+            "allow_overlapping_workflow": allow_overlapping_workflow,
+            "download_preview2": download_preview,
+            "download_skeleton2": download_skeleton,
+            "download_preview": download_preview,
+            "download_skeleton": download_skeleton,
+            "record_version_history": record_version_history,
+            "enable_split_join": enable_split_join,
+        }
+
+        if edit_defaults or (
+            not yes and click.confirm(
+                "Modify common optional/default settings?", default=False
+            )
+        ):
+            kwargs = _prompt_optional_defaults(kwargs)
+
+        if not yes:
+            summary = dict(kwargs)
+            if summary.get("deadline") is not None:
+                summary["deadline"] = summary["deadline"].strftime("%Y-%m-%d")
+            _echo_create_summary("Create New Project", summary)
+            if not click.confirm("\nCreate project with these values?", default=False):
+                click.echo("Cancelled.")
+                return
+
+        project_guid = pm.create_project(**kwargs)
+
+        if as_json:
+            output_json({"ProjectGuid": project_guid})
+            return
+
+        click.echo("\nDone: Project created!")
+        click.echo(f"  Project GUID: {project_guid}")
 
     except Exception as e:
         handle_api_error(e, ctx.obj.get("verbose", False))

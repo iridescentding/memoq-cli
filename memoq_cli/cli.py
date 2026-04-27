@@ -16,6 +16,15 @@ from .utils import setup_logging
 from .commands import project, file, tm, tb, template, resource
 
 
+def _mask_secret(value: str) -> str:
+    """Return a short masked representation for terminal summaries."""
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "*" * len(value)
+    return f"{value[:4]}...{value[-4:]}"
+
+
 @click.group()
 @click.option("--config", "-c", type=click.Path(), help="Configuration file path")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output (DEBUG level)")
@@ -149,7 +158,7 @@ def init(host, wsapi_port, rsapi_port, rsapi_path, api_key, username, password, 
     click.echo(f"   Server:        {host}")
     click.echo(f"   WSAPI:         {host}:{wsapi_port}")
     click.echo(f"   RSAPI:         {host}:{rsapi_port}/{rsapi_path}")
-    click.echo(f"   API Key:       {api_key}")
+    click.echo(f"   API Key:       {_mask_secret(api_key)}")
     click.echo(f"   RSAPI User:    {username}")
     click.echo(f"\nTip: Edit the config file to modify settings")
 

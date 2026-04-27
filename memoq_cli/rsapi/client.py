@@ -139,7 +139,11 @@ class RSAPIClient:
         endpoint = endpoint.lstrip("/")
         return f"{self.base_url}/{endpoint}"
     
-    def authenticate(self) -> str:
+    def authenticate(
+        self,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> str:
         """
         使用用户名密码获取访问令牌 (MemoQServerUser LoginMode 0)
 
@@ -154,9 +158,9 @@ class RSAPIClient:
         self.logger.debug(f"认证请求: {url}")
 
         payload = {
-            "username": self._username,
-            "password": self._password,
-            "LoginMode": "0",
+            "username": username if username is not None else self._username,
+            "password": password if password is not None else self._password,
+            "LoginMode": 0,
         }
 
         response = self.session.post(url, json=payload)
@@ -173,6 +177,10 @@ class RSAPIClient:
 
         self.logger.info("RSAPI 认证成功")
         return self._access_token
+
+    def authenticate_with_password(self, username: str, password: str) -> str:
+        """Authenticate with explicit username/password credentials."""
+        return self.authenticate(username=username, password=password)
     
     def ensure_authenticated(self):
         """确保已认证，如未认证则自动认证"""
