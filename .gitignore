@@ -32,16 +32,16 @@ Thumbs.db
 # Config with secrets
 config.json
 
-# Ad-hoc test/exploration scripts (contain hardcoded credentials)
-check_*.py
-test_*.py
-explore_*.py
-discover_*.py
-find_*.py
-list_all_*.py
-testfilter.xml
+# Ad-hoc test/exploration scripts in the repo root (contain hardcoded credentials)
+/check_*.py
+/test_*.py
+/explore_*.py
+/discover_*.py
+/find_*.py
+/list_all_*.py
+/testfilter.xml
 
-# Feature design docs (contain credentials)
-CLI_TEMPLATE_FEATURE.md
-PROJECT_TEMPLATE_FEATURE.md
-TEMPLATE_FEATURE_FINAL.md
+# Feature design docs in the repo root (contain credentials)
+/CLI_TEMPLATE_FEATURE.md
+/PROJECT_TEMPLATE_FEATURE.md
+/TEMPLATE_FEATURE_FINAL.md

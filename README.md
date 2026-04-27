@@ -33,7 +33,7 @@ This CLI is a thin local client over memoQ Server's WSAPI (SOAP) and RSAPI
 - **Idempotency:** `list` / `info` / `search` / `lookup` / `export` /
   `download` / `stats` are safe to retry. `create` / `delete` /
   `import` / `assign` / `upload` / `entry-*` mutate server state.
-- **Destructive commands** (`tm delete`, `tb delete`, `entry-delete`) prompt
+- **Destructive commands** (`entry-delete`) prompt
   by default; pass `-y` to skip in automation.
 
 ### Minimal automation recipe
@@ -49,9 +49,9 @@ $MEMOQ tb list --json
 $MEMOQ template list --json
 
 # 3. Drive per-object commands with those GUIDs
-$MEMOQ project docs <PROJECT_GUID> -d --json
+$MEMOQ project docs -d --json <PROJECT_GUID>
 $MEMOQ project stats <PROJECT_GUID> -F CSV_MemoQ --json
-$MEMOQ tm search <TM_GUID> "text" -t 80 --json
+$MEMOQ tm concordance <TM_GUID> "text" -n 20 --json
 ```
 
 ### Command surface (one line each)
@@ -59,10 +59,10 @@ $MEMOQ tm search <TM_GUID> "text" -t 80 --json
 | Group | Commands |
 |-------|----------|
 | top-level | `init`, `test`, `config`, `--version` |
-| `project` | `list`, `info`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs userassign` |
+| `project` | `list`, `info`, `new`, `createfromtemplate`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs userassign` |
 | `file` | `upload`, `download`, `import-xliff` |
-| `tm` | `list`, `info`, `create`, `delete`, `import`, `export`, `search`, `concordance`, `lookup`, `metascheme`, `entry`, `entry-add`, `entry-update`, `entry-delete` |
-| `tb` | `list`, `info`, `create`, `delete`, `add`, `search`, `lookup`, `metadefs`, `import`, `export`, `entry`, `entry-update`, `entry-delete`, `entry-meta`, `language-meta`, `term-meta` |
+| `tm` | `list`, `info`, `concordance`, `lookup`, `metascheme`, `entry`, `entry-add`, `entry-update`, `entry-delete` |
+| `tb` | `list`, `info`, `add`, `search`, `lookup`, `metadefs`, `entry`, `entry-update`, `entry-delete`, `entry-meta`, `language-meta`, `term-meta` |
 | `template` | `list`, `info` |
 | `resource` | `listall`, `importnewfilter` |
 
@@ -74,7 +74,7 @@ most list commands accept `-f <name-filter>` and `-n <limit>`.
 - Always call `memoq test` once before a batch run — it validates WSAPI/RSAPI
   reachability and credentials cheaply.
 - Server calls are network-bound; expect seconds-to-minutes for `project stats`,
-  `file upload -t dir/zip`, and `tm import`/`export`. Budget timeouts ≥ 5 min
+  `project new`, `project createfromtemplate`, and `file upload -t dir/zip`. Budget timeouts ≥ 5 min
   for those.
 - Language codes are memoQ-style (`eng`, `zho-CN`, `kor`, `de-DE`) — not
   ISO-639-1. Pull them from `project info` / `tm list` output rather than
@@ -300,18 +300,50 @@ memoq project list --json
 # Get project details
 memoq project info <PROJECT_GUID>
 
+# Create a new Desktop Docs server project
+memoq project new
+memoq project new -n "My Project" -u <USER_GUID> -s eng -l zho-CN
+memoq project new -n "My Project" -s zho-CN -l eng-US -y
+memoq project new -n "My Project" -s zho-CN -l eng-US \
+  --callback-url http://localhost:8088/memoq-callback.asmx -y
+
+# Create a project from a project template
+memoq project createfromtemplate <TEMPLATE_GUID> -u <USER_GUID>
+memoq project createfromtemplate <TEMPLATE_GUID> -u <USER_GUID> -n "My Project"
+
+If `--creator-user` is omitted, the CLI resolves `auth.username` from config
+through `ListUsers()` and uses that user's `UserGuid`.
+
+`project new` creates a Desktop Docs project via `CreateProject2`.
+It requires a project name, source language, and at least one target language.
+If `--deadline` is omitted, the CLI uses a default deadline of 14 days from
+now at 09:00. `--callback-url` sets `CallbackWebServiceUrl` at creation time;
+setting this turns on memoQ server callback notifications. memoQ does not
+validate the callback URL until it is used, and `project info` does not expose
+the configured callback URL; verify it in memoQ client under project
+Settings / Communication if needed.
+
+`project createfromtemplate` creates a project via `CreateProjectFromTemplate`.
+Template creation accepts template/project metadata overrides; if a callback URL
+is needed, create the project first and then run:
+
+```bash
+memoq project update <PROJECT_GUID> \
+  --callback-url http://localhost:8088/memoq-callback.asmx
+```
+
 # List documents in a project
 memoq project docs <PROJECT_GUID>
 
 # Show document status
-memoq project docs <PROJECT_GUID> -s
+memoq project docs -s <PROJECT_GUID>
 
 # Show detailed document info with assignments (uses ListProjectTranslationDocuments2)
-memoq project docs <PROJECT_GUID> -d
-memoq project docs detailed <PROJECT_GUID>
+memoq project docs -d <PROJECT_GUID>
+memoq project docs <PROJECT_GUID> detailed
 
 # Detailed view without assignment info (faster)
-memoq project docs detailed <PROJECT_GUID> -n
+memoq project docs <PROJECT_GUID> detailed -n
 
 # Get project statistics
 memoq project stats <PROJECT_GUID>
@@ -379,23 +411,6 @@ memoq tm list -f "project" -s eng -t zho-CN
 # Get TM details
 memoq tm info <TM_GUID>
 
-# Create new TM
-memoq tm create -n "My TM" -s eng -t zho-CN
-
-# Delete TM (asks for confirmation)
-memoq tm delete <TM_GUID>
-memoq tm delete <TM_GUID> -y    # skip confirmation
-
-# Import TMX file
-memoq tm import <TM_GUID> -p ./memory.tmx
-
-# Export TM to TMX
-memoq tm export <TM_GUID> -o ./exported.tmx
-
-# Search TM (with custom threshold, default 75%)
-memoq tm search <TM_GUID> "search text"
-memoq tm search <TM_GUID> "search text" -t 80
-
 # Concordance search
 memoq tm concordance <TM_GUID> "search term"
 memoq tm concordance <TM_GUID> term1 term2    # multiple terms
@@ -425,13 +440,6 @@ memoq tb list -f "project"    # filter by name
 # Get TB details
 memoq tb info <TB_GUID>
 
-# Create new TB (multi-language)
-memoq tb create -n "My TB" -l zho-CN -l eng
-
-# Delete TB (asks for confirmation)
-memoq tb delete <TB_GUID>
-memoq tb delete <TB_GUID> -y    # skip confirmation
-
 # Add a term entry
 memoq tb add <TB_GUID> -t "eng:computer" -t "zho-CN:电脑"
 memoq tb add <TB_GUID> -t "eng:RAM" -t "zho-CN:内存" -d "Random Access Memory" --domain "IT"
@@ -448,10 +456,6 @@ memoq tb lookup <TB_GUID> "seg1" "seg2" -s zho-CN     # multiple segments
 
 # Get metadata definitions
 memoq tb metadefs <TB_GUID>
-
-# Import / Export
-memoq tb import <TB_GUID> -p ./terms.csv
-memoq tb export <TB_GUID> -o ./terms.csv
 
 # Entry operations
 memoq tb entry <TB_GUID> <ENTRY_ID>                             # get entry

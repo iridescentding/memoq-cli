@@ -3,7 +3,7 @@
 memoQ CLI - 项目管理模块
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from zeep.exceptions import Fault
 from zeep.helpers import serialize_object
@@ -66,6 +66,169 @@ class ProjectManager(WSAPIClient):
 
         except Fault as e:
             self.logger.error(f"获取项目信息失败: {e}")
+            raise
+
+    def _array_of_string(self, client, values: Optional[List[str]]):
+        """Build the SOAP ArrayOfstring wrapper memoQ expects for string arrays."""
+        if not values:
+            return None
+        array_type = client.get_type(
+            "{http://schemas.microsoft.com/2003/10/Serialization/Arrays}"
+            "ArrayOfstring"
+        )
+        return array_type(string=list(values))
+
+    def create_project_from_template(
+        self,
+        template_guid: str,
+        creator_user: str,
+        name: Optional[str] = None,
+        source_language_code: Optional[str] = None,
+        target_language_codes: Optional[List[str]] = None,
+        description: Optional[str] = None,
+        client_attr: Optional[str] = None,
+        domain: Optional[str] = None,
+        project_attr: Optional[str] = None,
+        subject: Optional[str] = None,
+        project_creation_aspects: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Create a server project from a project template."""
+        client = self.get_client("ServerProject")
+
+        try:
+            ns = "{http://kilgray.com/memoqservices/2007}"
+            create_info_type = client.get_type(ns + "TemplateBasedProjectCreateInfo")
+
+            kwargs = {
+                "TemplateGuid": template_guid,
+                "CreatorUser": creator_user,
+            }
+            optional_values = {
+                "Name": name,
+                "SourceLanguageCode": source_language_code,
+                "Description": description,
+                "Client": client_attr,
+                "Domain": domain,
+                "Project": project_attr,
+                "Subject": subject,
+            }
+            kwargs.update({
+                key: value for key, value in optional_values.items()
+                if value is not None
+            })
+
+            target_langs = self._array_of_string(client, target_language_codes)
+            if target_langs is not None:
+                kwargs["TargetLanguageCodes"] = target_langs
+
+            aspects = self._array_of_string(client, project_creation_aspects)
+            if aspects is not None:
+                kwargs["ProjectCreationAspects"] = aspects
+
+            create_info = create_info_type(**kwargs)
+            result = client.service.CreateProjectFromTemplate(
+                createInfo=create_info
+            )
+            self.log_soap_debug("CreateProjectFromTemplate")
+            return serialize_object(result) or {}
+
+        except Fault as e:
+            self.logger.error(f"通过模板创建项目失败: {e}")
+            raise
+
+    def create_project(
+        self,
+        name: str,
+        creator_user: str,
+        source_language_code: str,
+        target_language_codes: List[str],
+        description: Optional[str] = None,
+        client_attr: Optional[str] = None,
+        domain: Optional[str] = None,
+        project_attr: Optional[str] = None,
+        subject: Optional[str] = None,
+        deadline: Optional[datetime] = None,
+        callback_url: Optional[str] = None,
+        allow_overlapping_workflow: bool = False,
+        allow_package_creation: bool = False,
+        download_preview2: bool = False,
+        download_skeleton2: bool = False,
+        enable_communication: bool = False,
+        omit_hits_with_no_target_term: bool = False,
+        prevent_delivery_on_qa_error: bool = False,
+        record_version_history: bool = False,
+        strict_sublang_matching: bool = False,
+        strict_sublang_matching_livedocs: bool = False,
+        strict_sublang_matching_tm: bool = False,
+        checkout_is_disabled: bool = False,
+        create_offline_tm_tb_copies: bool = False,
+        download_preview: bool = False,
+        download_skeleton: bool = False,
+        enable_bilingual_export_in_local_copy: bool = False,
+        enable_split_join: bool = False,
+        enable_web_trans: bool = False,
+    ) -> str:
+        """Create a new Desktop Docs server project via CreateProject2."""
+        client = self.get_client("ServerProject")
+
+        try:
+            if deadline is None:
+                deadline = (
+                    datetime.now() + timedelta(days=14)
+                ).replace(hour=9, minute=0, second=0, microsecond=0)
+
+            ns = "{http://kilgray.com/memoqservices/2007}"
+            create_info_type = client.get_type(ns + "ServerProjectDesktopDocsCreateInfo")
+
+            kwargs = {
+                "Name": name,
+                "CreatorUser": creator_user,
+                "SourceLanguageCode": source_language_code,
+                "TargetLanguageCodes": self._array_of_string(
+                    client, target_language_codes
+                ),
+                "AllowOverlappingWorkflow": allow_overlapping_workflow,
+                "AllowPackageCreation": allow_package_creation,
+                "DownloadPreview2": download_preview2,
+                "DownloadSkeleton2": download_skeleton2,
+                "EnableCommunication": enable_communication,
+                "OmitHitsWithNoTargetTerm": omit_hits_with_no_target_term,
+                "PreventDeliveryOnQAError": prevent_delivery_on_qa_error,
+                "RecordVersionHistory": record_version_history,
+                "StrictSubLangMatching": strict_sublang_matching,
+                "StrictSubLangMatchingLiveDocs": strict_sublang_matching_livedocs,
+                "StrictSubLangMatchingTM": strict_sublang_matching_tm,
+                "CheckoutIsDisabled": checkout_is_disabled,
+                "CreateOfflineTMTBCopies": create_offline_tm_tb_copies,
+                "DownloadPreview": download_preview,
+                "DownloadSkeleton": download_skeleton,
+                "EnableBilingualExportInLocalCopy": (
+                    enable_bilingual_export_in_local_copy
+                ),
+                "EnableSplitJoin": enable_split_join,
+                "EnableWebTrans": enable_web_trans,
+            }
+            optional_values = {
+                "Description": description,
+                "Client": client_attr,
+                "Domain": domain,
+                "Project": project_attr,
+                "Subject": subject,
+                "Deadline": deadline,
+                "CallbackWebServiceUrl": callback_url,
+            }
+            kwargs.update({
+                key: value for key, value in optional_values.items()
+                if value is not None
+            })
+
+            create_info = create_info_type(**kwargs)
+            result = client.service.CreateProject2(spInfo=create_info)
+            self.log_soap_debug("CreateProject2")
+            return str(result)
+
+        except Fault as e:
+            self.logger.error(f"创建项目失败: {e}")
             raise
 
     def list_project_documents(
