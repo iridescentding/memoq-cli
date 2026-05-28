@@ -98,7 +98,8 @@ class FileManager(WSAPIClient):
         file_guid: str,
         project_guid: str,
         target_languages: List[str],
-        import_path: Optional[str] = None
+        import_path: Optional[str] = None,
+        external_document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Import an uploaded file into a project.
@@ -108,6 +109,7 @@ class FileManager(WSAPIClient):
             project_guid: Target project GUID
             target_languages: List of target language codes
             import_path: Optional path within project
+            external_document_id: Optional caller-owned document ID surfaced in callbacks
 
         Returns:
             Import result
@@ -139,6 +141,8 @@ class FileManager(WSAPIClient):
             }
             if import_path:
                 kwargs['PathToSetAsImportPath'] = import_path
+            if external_document_id:
+                kwargs['ExternalDocumentId'] = external_document_id
 
             item = ImportOptionsType(**kwargs)
             import_options_array = ArrayImportOptionsType([item])
@@ -173,7 +177,8 @@ class FileManager(WSAPIClient):
         self,
         file_path: str,
         project_guid: str,
-        target_languages: Optional[List[str]] = None
+        target_languages: Optional[List[str]] = None,
+        external_document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Upload a single file to a project (chunked upload + import).
@@ -182,6 +187,7 @@ class FileManager(WSAPIClient):
             file_path: Path to the file
             project_guid: Target project GUID
             target_languages: Optional list of target language codes
+            external_document_id: Optional caller-owned document ID surfaced in callbacks
 
         Returns:
             Upload result information
@@ -202,7 +208,8 @@ class FileManager(WSAPIClient):
         result = self.import_document_to_project(
             file_guid=file_guid,
             project_guid=project_guid,
-            target_languages=target_langs
+            target_languages=target_langs,
+            external_document_id=external_document_id
         )
 
         result['file_name'] = file_name
@@ -214,7 +221,8 @@ class FileManager(WSAPIClient):
         zip_path: str,
         project_guid: str,
         preserve_structure: bool = True,
-        target_languages: Optional[List[str]] = None
+        target_languages: Optional[List[str]] = None,
+        external_document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Upload a ZIP file to a project.
@@ -224,6 +232,7 @@ class FileManager(WSAPIClient):
             project_guid: Target project GUID
             preserve_structure: Whether to preserve directory structure
             target_languages: Optional list of target language codes
+            external_document_id: Optional caller-owned document ID surfaced in callbacks
 
         Returns:
             Upload result information
@@ -244,7 +253,8 @@ class FileManager(WSAPIClient):
         result = self.import_document_to_project(
             file_guid=file_guid,
             project_guid=project_guid,
-            target_languages=target_langs
+            target_languages=target_langs,
+            external_document_id=external_document_id
         )
 
         result['file_name'] = file_name
@@ -257,7 +267,8 @@ class FileManager(WSAPIClient):
         dir_path: str,
         project_guid: str,
         target_languages: Optional[List[str]] = None,
-        filter_system_files: bool = True
+        filter_system_files: bool = True,
+        external_document_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Package a directory as ZIP and upload to a project.
@@ -267,6 +278,7 @@ class FileManager(WSAPIClient):
             project_guid: Target project GUID
             target_languages: Optional list of target language codes
             filter_system_files: Whether to filter out system files
+            external_document_id: Optional caller-owned document ID surfaced in callbacks
 
         Returns:
             Upload result information
@@ -306,7 +318,8 @@ class FileManager(WSAPIClient):
                 tmp_zip_path,
                 project_guid,
                 preserve_structure=True,
-                target_languages=target_languages
+                target_languages=target_languages,
+                external_document_id=external_document_id
             )
             result['type'] = 'directory'
             result['files_packaged'] = file_count

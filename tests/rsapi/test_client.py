@@ -4,7 +4,26 @@ Tests for RSAPI Client
 """
 
 import pytest
+
+from memoq_cli import config as config_module
 from memoq_cli.rsapi.client import RSAPIClient
+
+
+@pytest.fixture(autouse=True)
+def isolated_config_search_paths(tmp_path, monkeypatch):
+    """Keep RSAPI client defaults independent from a real local config.json."""
+    monkeypatch.setattr(
+        config_module,
+        "CONFIG_SEARCH_PATHS",
+        [
+            tmp_path / "config.json",
+            tmp_path / ".memoq" / "config.json",
+            tmp_path / ".config" / "memoq" / "config.json",
+        ],
+    )
+    config_module.reset_config()
+    yield
+    config_module.reset_config()
 
 
 class TestRSAPIClientPort:

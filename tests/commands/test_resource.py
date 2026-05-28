@@ -3,7 +3,9 @@
 Tests for resource CLI commands
 """
 
+import json
 import pytest
+from pathlib import Path
 from unittest.mock import patch, Mock, MagicMock
 from click.testing import CliRunner
 from memoq_cli.commands.resource import resource
@@ -149,3 +151,176 @@ class TestResourceListAll:
 
         assert result.exit_code == 0, result.output
         assert "FilterConfigs" in result.output
+
+
+class TestResourceList:
+    """Test memoq resource list command"""
+
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_all_calls_each_supported_resource_type(self, MockWSAPI):
+        """list --all should list all supported resource types in a flat table"""
+        mock_client = MagicMock()
+        mock_client.service.ListResources.return_value = [
+            {"Guid": "g1", "Name": "Resource1"},
+        ]
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        runner = CliRunner()
+        result = runner.invoke(resource, ["list", "--all"], obj={"verbose": False})
+
+        assert result.exit_code == 0, result.output
+        assert mock_client.service.ListResources.call_count > 1
+        assert "ResourceType" in result.output
+        assert "FilterConfigs" in result.output
+        assert "Resource1" in result.output
+
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_a_short_flag_lists_all_resource_types(self, MockWSAPI):
+        """list -a should behave like list --all"""
+        mock_client = MagicMock()
+        mock_client.service.ListResources.return_value = [
+            {"Guid": "g1", "Name": "Resource1"},
+        ]
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        runner = CliRunner()
+        result = runner.invoke(resource, ["list", "-a"], obj={"verbose": False})
+
+        assert result.exit_code == 0, result.output
+        assert mock_client.service.ListResources.call_count > 1
+        assert "ResourceType" in result.output
+
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_filter_shows_short_filter_type(self, MockWSAPI):
+        """list filter should list FilterConfigs with a short Type column"""
+        mock_client = MagicMock()
+        mock_client.service.ListResources.return_value = [
+            {
+                "Guid": "g1",
+                "Name": "Filter1",
+                "FilterName": "MemoQ.DocConverters.MuLiDelimited.MuLiDelimitedConverter",
+            },
+        ]
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        runner = CliRunner()
+        result = runner.invoke(resource, ["list", "filter"], obj={"verbose": False})
+
+        assert result.exit_code == 0, result.output
+        mock_client.service.ListResources.assert_called_once_with("FilterConfigs", None)
+        assert "Type" in result.output
+        assert "MuLiDelimitedConverter" in result.output
+        assert "Filter1" in result.output
+
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_filter_json_adds_type_and_preserves_filter_name(self, MockWSAPI):
+        """list filter --json should enrich rows with Type and keep FilterName"""
+        mock_client = MagicMock()
+        mock_client.service.ListResources.return_value = [
+            {
+                "Guid": "g1",
+                "Name": "Filter1",
+                "FilterName": "MemoQ.DocConverters.XLSX.XLSXConverter",
+            },
+        ]
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        runner = CliRunner()
+        result = runner.invoke(resource, ["list", "filter", "--json"], obj={"verbose": False})
+
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data[0]["Type"] == "XLSXConverter"
+        assert data[0]["FilterName"] == "MemoQ.DocConverters.XLSX.XLSXConverter"
+
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_filter_type_filters_by_short_filter_type(self, MockWSAPI):
+        """list filter type -f should only show matching filter converter types"""
+        mock_client = MagicMock()
+        mock_client.service.ListResources.return_value = [
+            {
+                "Guid": "g1",
+                "Name": "Chained Filter",
+                "FilterName": "MemoQ.DocConverters.ChainedConverter.ChainedConverter",
+            },
+            {
+                "Guid": "g2",
+                "Name": "XLSX Filter",
+                "FilterName": "MemoQ.DocConverters.XLSX.XLSXConverter",
+            },
+        ]
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        runner = CliRunner()
+        result = runner.invoke(
+            resource,
+            ["list", "filter", "type", "-f", "ChainedConverter"],
+            obj={"verbose": False},
+        )
+
+        assert result.exit_code == 0, result.output
+        mock_client.service.ListResources.assert_called_once_with("FilterConfigs", None)
+        assert "ChainedConverter" in result.output
+        assert "Chained Filter" in result.output
+        assert "XLSX Filter" not in result.output
+
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_filter_type_json_filters_by_short_filter_type(self, MockWSAPI):
+        """list filter type --json should return only matching enriched rows"""
+        mock_client = MagicMock()
+        mock_client.service.ListResources.return_value = [
+            {
+                "Guid": "g1",
+                "Name": "Chained Filter",
+                "FilterName": "MemoQ.DocConverters.ChainedConverter.ChainedConverter",
+            },
+            {
+                "Guid": "g2",
+                "Name": "XLSX Filter",
+                "FilterName": "MemoQ.DocConverters.XLSX.XLSXConverter",
+            },
+        ]
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        runner = CliRunner()
+        result = runner.invoke(
+            resource,
+            ["list", "filter", "type", "-f", "ChainedConverter", "--json"],
+            obj={"verbose": False},
+        )
+
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert [row["Name"] for row in data] == ["Chained Filter"]
+        assert data[0]["Type"] == "ChainedConverter"
+
+    @patch('memoq_cli.commands.resource.FileManager')
+    @patch('memoq_cli.commands.resource.WSAPIClient')
+    def test_list_filter_detail_exports_and_prints_filter_xml(self, MockWSAPI, MockFM):
+        """list filter -d should export a FilterConfigs resource and print XML"""
+        mock_client = MagicMock()
+        mock_client.service.ExportResource.return_value = "file-guid-123"
+        MockWSAPI.return_value.get_client.return_value = mock_client
+
+        mock_fm = MockFM.return_value
+
+        def download_file(file_guid, output_path):
+            Path(output_path).write_text("<filter><name>demo</name></filter>", encoding="utf-8")
+            return output_path
+
+        mock_fm.download_file_chunked.side_effect = download_file
+
+        runner = CliRunner()
+        result = runner.invoke(
+            resource,
+            ["list", "filter", "-d", "filter-guid-123"],
+            obj={"verbose": False},
+        )
+
+        assert result.exit_code == 0, result.output
+        mock_client.service.ExportResource.assert_called_once_with(
+            resourceType="FilterConfigs",
+            resourceGuid="filter-guid-123",
+        )
+        mock_fm.download_file_chunked.assert_called_once()
+        assert "<filter><name>demo</name></filter>" in result.output

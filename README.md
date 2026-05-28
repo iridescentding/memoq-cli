@@ -59,12 +59,13 @@ $MEMOQ tm concordance <TM_GUID> "text" -n 20 --json
 | Group | Commands |
 |-------|----------|
 | top-level | `init`, `test`, `config`, `--version` |
+| `callback` | `serve`, `configure` |
 | `project` | `list`, `info`, `new`, `createfromtemplate`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs userassign` |
 | `file` | `upload`, `download`, `import-xliff` |
 | `tm` | `list`, `info`, `concordance`, `lookup`, `metascheme`, `entry`, `entry-add`, `entry-update`, `entry-delete` |
 | `tb` | `list`, `info`, `add`, `search`, `lookup`, `metadefs`, `entry`, `entry-update`, `entry-delete`, `entry-meta`, `language-meta`, `term-meta` |
 | `template` | `list`, `info` |
-| `resource` | `listall`, `importnewfilter` |
+| `resource` | `list`, `listall`, `importnewfilter` |
 
 Run any command with `--help` to get flags; most read commands accept `--json`,
 most list commands accept `-f <name-filter>` and `-n <limit>`.
@@ -277,7 +278,7 @@ memoq tm --help
 | `memoq tm` | Manage Translation Memories |
 | `memoq tb` | Manage Terminology Bases |
 | `memoq template` | Browse project templates |
-| `memoq resource` | Light Resource Service (import filters, list all resources) |
+| `memoq resource` | Light Resource Service (import filters, list resources) |
 
 ### Project Commands
 
@@ -331,6 +332,48 @@ is needed, create the project first and then run:
 memoq project update <PROJECT_GUID> \
   --callback-url http://localhost:8088/memoq-callback.asmx
 ```
+
+### Receive memoQ callbacks
+
+Run a local callback receiver:
+
+```bash
+memoq callback serve --host 0.0.0.0 --port 8088 \
+  --events-path ./memoq_callback_events.jsonl
+```
+
+The receiver exposes:
+
+- `POST /memoq-callback.asmx` for memoQ SOAP callbacks
+- `GET /health` for a local readiness check
+
+It handles memoQ's `TestCallback` and `DocumentDelivery` SOAP operations,
+appends parsed callback events to the JSONL file, and can forward parsed JSON
+to another endpoint:
+
+```bash
+memoq callback serve --port 8088 \
+  --forward-url https://example.internal/api/memoq/callback
+```
+
+Configure an existing project to call the endpoint:
+
+```bash
+memoq callback configure c25f0cdb-4242-f111-966c-a38328e9a256 \
+  --base-url https://your-public-or-tunnel-url.example.com
+```
+
+This writes `CallbackWebServiceUrl` through WSAPI `UpdateProject` as:
+
+```text
+https://your-public-or-tunnel-url.example.com/memoq-callback.asmx
+```
+
+If the memoQ server is remote, `localhost`, `127.0.0.1`, and a Docker-only
+container address will not work as callback URLs because memoQ resolves them
+from the server side. Use a reachable URL: a public host, reverse proxy,
+VPN-routed host address, Cloudflare Tunnel, ngrok, Tailscale Funnel, frp, or
+similar ingress.
 
 # List documents in a project
 memoq project docs <PROJECT_GUID>
@@ -497,15 +540,28 @@ Manage memoQ light resources (filter configs, MT settings, QA settings, etc.) vi
 
 ```bash
 # List all resources across all supported types
-memoq resource listall
+memoq resource list --all
 
-# List resources of a specific type only
-memoq resource listall --type FilterConfigs
-memoq resource listall --type QASettings
-memoq resource listall --type MTSettings
+# Short form for all resources
+memoq resource list -a
+
+# List filter configs only, including filter converter type
+memoq resource list filter
+
+# List filter configs for one converter type
+memoq resource list filter type -f ChainedConverter
+
+# Print one filter config XML by resource GUID
+memoq resource list filter -d <FILTER_GUID>
 
 # Output as JSON
-memoq resource listall --json
+memoq resource list --all --json
+memoq resource list filter --json
+memoq resource list filter type -f ChainedConverter --json
+
+# Legacy-compatible form
+memoq resource listall
+memoq resource listall --type QASettings
 
 # Import a filter config file as a new resource
 memoq resource importnewfilter ./myfilter.xml
@@ -514,7 +570,7 @@ memoq resource importnewfilter ./myfilter.xml
 memoq resource importnewfilter ./myfilter.xml --name "My Custom Filter"
 ```
 
-**Supported resource types for `listall`:**
+**Supported resource types for `list --all`:**
 
 | Type | Description |
 |------|-------------|

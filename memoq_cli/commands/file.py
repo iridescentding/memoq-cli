@@ -36,8 +36,19 @@ def file():
               help="Preserve directory structure (for zip/dir)")
 @click.option("--filter-system/--no-filter-system", default=True,
               help="Filter system files")
+@click.option("--external-document-id", default=None,
+              help="External document ID stored by memoQ and returned in callbacks")
 @click.pass_context
-def file_upload(ctx, project_guid, path, file_type, target_lang, preserve_structure, filter_system):
+def file_upload(
+    ctx,
+    project_guid,
+    path,
+    file_type,
+    target_lang,
+    preserve_structure,
+    filter_system,
+    external_document_id,
+):
     """上传文件到项目 / Upload files to a project
 
     \b
@@ -47,11 +58,13 @@ def file_upload(ctx, project_guid, path, file_type, target_lang, preserve_struct
         -l/--target-lang    目标语言, 可重复 / Target language(s), repeatable
         -P/--preserve-structure   保留目录结构 (zip/dir) / Preserve dir tree
         --filter-system           过滤系统文件 (dir) / Skip system files
+        --external-document-id    外部文档 ID, 回调中返回 / Returned in callbacks
 
     \b
     示例 / Examples:
         memoq file upload <GUID> -p ./doc.docx
         memoq file upload <GUID> -p ./docs.zip -t zip -l eng -l por
+        memoq file upload <GUID> -p ./doc.docx -l eng --external-document-id DOC-123
         memoq file upload <GUID> -p ./src_folder -t dir --no-preserve-structure
     """
     fm = FileManager()
@@ -64,25 +77,34 @@ def file_upload(ctx, project_guid, path, file_type, target_lang, preserve_struct
 
     if target_languages:
         click.echo(f"   Targets: {', '.join(target_languages)}")
+    if external_document_id:
+        click.echo(f"   ExternalDocumentId: {external_document_id}")
     click.echo()
 
     try:
         if file_type == "file":
             click.echo("Uploading file...")
-            result = fm.upload_file(path, project_guid, target_languages)
+            result = fm.upload_file(
+                path,
+                project_guid,
+                target_languages,
+                external_document_id=external_document_id,
+            )
         elif file_type == "zip":
             click.echo("Uploading ZIP...")
             result = fm.upload_zip(
                 path, project_guid,
                 preserve_structure=preserve_structure,
-                target_languages=target_languages
+                target_languages=target_languages,
+                external_document_id=external_document_id,
             )
         elif file_type == "dir":
             click.echo("Packaging and uploading directory...")
             result = fm.upload_directory(
                 path, project_guid,
                 target_languages=target_languages,
-                filter_system_files=filter_system
+                filter_system_files=filter_system,
+                external_document_id=external_document_id,
             )
 
         click.echo("\nDone: Upload successful!")
