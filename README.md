@@ -60,7 +60,7 @@ $MEMOQ tm concordance <TM_GUID> "text" -n 20 --json
 |-------|----------|
 | top-level | `init`, `test`, `config`, `--version` |
 | `callback` | `serve`, `configure` |
-| `project` | `list`, `info`, `new`, `createfromtemplate`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs userassign` |
+| `project` | `list`, `info`, `new`, `createfromtemplate`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs firstaccept`, `docs userassign` |
 | `file` | `upload`, `download`, `import-xliff` |
 | `tm` | `list`, `info`, `concordance`, `lookup`, `metascheme`, `entry`, `entry-add`, `entry-update`, `entry-delete` |
 | `tb` | `list`, `info`, `add`, `search`, `lookup`, `metadefs`, `entry`, `entry-update`, `entry-delete`, `entry-meta`, `language-meta`, `term-meta` |
@@ -407,12 +407,31 @@ memoq project users assign <PROJECT_GUID>
 
 ```bash
 # List document-user assignments in a table
-memoq project docs userassign <PROJECT_GUID>
+memoq project docs <PROJECT_GUID> userassign
 
 # Interactively assign a user to a document
 # (prompts for document, user, role, and deadline)
-memoq project docs assign <PROJECT_GUID>
+memoq project docs <PROJECT_GUID> assign
+
+# Assign a FirstAccept user pool to one or more documents
+# (users must already be project members)
+memoq project docs <PROJECT_GUID> firstaccept \
+  --doc <DOC_GUID> \
+  --user <USER_GUID_1> --user <USER_GUID_2> \
+  --role translator \
+  --deadline 2026-06-22 \
+  --first-accept-deadline 2026-06-10 \
+  --yes
 ```
+
+`firstaccept` uses memoQ's advanced document assignment WSAPI and is intended
+for automated assignment flows. It does not add users to the project for you:
+run `memoq project users <PROJECT_GUID>` first, and add missing users with
+`memoq project users <PROJECT_GUID> assign` before assigning documents. Provide
+at least two `--user` values. `--role` accepts `translator`, `reviewer1`,
+`reviewer2`, `0`, `1`, or `2`. Both `--deadline` and
+`--first-accept-deadline` are required in `YYYY-MM-DD` format. Add `--json` to
+return the raw `SetTranslationDocumentAssignments` result.
 
 ### File Commands
 
@@ -749,10 +768,16 @@ memoq project list
 memoq file upload a1b2c3d4-... -p ./my-documents -t dir
 
 # 3. Assign users to documents
-memoq project docs assign a1b2c3d4-...
+memoq project docs a1b2c3d4-... assign
+
+# Or assign a FirstAccept pool
+memoq project docs a1b2c3d4-... firstaccept \
+  --doc <DOC_GUID> --user <USER_GUID_1> --user <USER_GUID_2> \
+  --role translator --deadline 2026-06-22 \
+  --first-accept-deadline 2026-06-10 --yes
 
 # 4. Check assignment status
-memoq project docs userassign a1b2c3d4-...
+memoq project docs a1b2c3d4-... userassign
 
 # 5. When translation is done, download files
 memoq file download a1b2c3d4-... -o ./translated

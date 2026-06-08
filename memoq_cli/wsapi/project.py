@@ -78,6 +78,15 @@ class ProjectManager(WSAPIClient):
         )
         return array_type(string=list(values))
 
+    def _soap_array_or_list(self, client, type_name: str, item_name: str, values):
+        """Build a memoQ SOAP array wrapper, falling back to a plain list."""
+        items = list(values)
+        try:
+            array_type = client.get_type(type_name)
+        except Exception:
+            return items
+        return array_type(**{item_name: items})
+
     def create_project_from_template(
         self,
         template_guid: str,
@@ -577,6 +586,89 @@ class ProjectManager(WSAPIClient):
 
         except Fault as e:
             self.logger.error(f"设置文档用户分配失败: {e}")
+            raise
+
+    def set_translation_document_first_accept_assignments(
+        self,
+        project_guid: str,
+        document_guids: List[str],
+        user_guids: List[str],
+        role: int,
+        deadline: datetime,
+        first_accept_deadline: datetime,
+        throw_fault: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Set FirstAccept assignments for one role on one or more documents.
+
+        Uses SetTranslationDocumentAssignments, the advanced WSAPI operation
+        required for FirstAccept, GroupSourcing, and subvendor assignments.
+        """
+        client = self.get_client("ServerProject")
+
+        try:
+            ns = "{http://kilgray.com/memoqservices/2007}"
+            array_ns = (
+                "{http://schemas.microsoft.com/2003/10/Serialization/Arrays}"
+            )
+
+            assignment_type = client.get_type(
+                ns + "TranslationDocumentFirstAcceptAssignmentInfo"
+            )
+            document_assignments_type = client.get_type(
+                ns + "TranslationDocumentAssignments"
+            )
+            options_type = client.get_type(
+                ns + "SetTranslationDocumentAssignmentsOptions"
+            )
+
+            user_guid_array = self._soap_array_or_list(
+                client,
+                array_ns + "ArrayOfguid",
+                "guid",
+                [str(guid) for guid in user_guids],
+            )
+
+            doc_assignments = []
+            for document_guid in document_guids:
+                first_accept_assignment = assignment_type(
+                    AssignmentType="FirstAccept",
+                    RoleId=role,
+                    Deadline=deadline,
+                    FirstAcceptDeadline=first_accept_deadline,
+                    UserGuids=user_guid_array,
+                )
+                assignment_array = self._soap_array_or_list(
+                    client,
+                    ns + "ArrayOfTranslationDocumentAssignmentInfo",
+                    "TranslationDocumentAssignmentInfo",
+                    [first_accept_assignment],
+                )
+                doc_assignments.append(document_assignments_type(
+                    DocumentGuid=str(document_guid),
+                    Assignments=assignment_array,
+                ))
+
+            document_assignment_array = self._soap_array_or_list(
+                client,
+                ns + "ArrayOfTranslationDocumentAssignments",
+                "TranslationDocumentAssignments",
+                doc_assignments,
+            )
+            options = options_type(
+                DocumentAssignments=document_assignment_array,
+                ThrowFault=throw_fault,
+            )
+
+            result = client.service.SetTranslationDocumentAssignments(
+                serverProjectGuid=project_guid,
+                options=options,
+            )
+            self.log_soap_debug("SetTranslationDocumentAssignments")
+            return serialize_object(result) or []
+
+        except Fault as e:
+            self.logger.error(f"设置 FirstAccept 文档分配失败: {e}")
             raise
 
     def list_project_translation_documents2(
