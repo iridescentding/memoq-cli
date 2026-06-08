@@ -207,6 +207,136 @@ def _default_project_deadline():
     ).replace(hour=9, minute=0, second=0, microsecond=0)
 
 
+DOCUMENT_ROLE_NAMES = {
+    0: "Translator",
+    1: "Reviewer1",
+    2: "Reviewer2",
+}
+
+DOCUMENT_ROLE_INPUTS = {
+    "0": 0,
+    "translator": 0,
+    "trans": 0,
+    "t": 0,
+    "1": 1,
+    "reviewer1": 1,
+    "reviewer 1": 1,
+    "reviewer_1": 1,
+    "r1": 1,
+    "2": 2,
+    "reviewer2": 2,
+    "reviewer 2": 2,
+    "reviewer_2": 2,
+    "r2": 2,
+}
+
+
+def _parse_document_role(value):
+    if value is None:
+        raise click.ClickException("Role is required.")
+    normalized = str(value).strip().lower().replace("-", " ")
+    normalized = " ".join(normalized.split())
+    normalized_compact = normalized.replace(" ", "")
+    if normalized in DOCUMENT_ROLE_INPUTS:
+        return DOCUMENT_ROLE_INPUTS[normalized]
+    if normalized_compact in DOCUMENT_ROLE_INPUTS:
+        return DOCUMENT_ROLE_INPUTS[normalized_compact]
+    raise click.ClickException(
+        "Invalid role. Use translator, reviewer1, reviewer2, 0, 1, or 2."
+    )
+
+
+def _format_datetime(value):
+    if not value:
+        return ""
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d %H:%M")
+    return str(value)[:16]
+
+
+def _extract_assignment_list(assignments_data):
+    if not assignments_data:
+        return []
+    if isinstance(assignments_data, dict):
+        for key in (
+            "TranslationDocumentDetailedAssignmentInfo",
+            "TranslationDocumentAssignmentInfo",
+        ):
+            values = assignments_data.get(key)
+            if values:
+                return values if isinstance(values, list) else [values]
+        return []
+    return assignments_data if isinstance(assignments_data, list) else [assignments_data]
+
+
+def _extract_first_accept_users(assign):
+    users_data = assign.get("Users") or {}
+    if isinstance(users_data, dict):
+        users = (
+            users_data.get("TranslationDocumentFirstAcceptUserInfo")
+            or users_data.get("TranslationDocumentAssigneeInfo")
+            or []
+        )
+    else:
+        users = users_data
+    if not isinstance(users, list):
+        users = [users]
+
+    display = []
+    for user in users:
+        if not isinstance(user, dict):
+            continue
+        name = (
+            user.get("AssigneeName")
+            or user.get("FullName")
+            or user.get("UserName")
+            or str(user.get("AssigneeGuid", ""))
+        )
+        decision = user.get("Decision")
+        if decision:
+            display.append(f"{name} [{decision}]")
+        elif name:
+            display.append(name)
+    return display
+
+
+def _is_first_accept_assignment(assign):
+    assignment_type = str(assign.get("AssignmentType", ""))
+    return (
+        assignment_type.lower().endswith("firstaccept")
+        or "FirstAcceptDeadline" in assign
+        or "Users" in assign
+    )
+
+
+def _format_assignment_assignees(assign):
+    if _is_first_accept_assignment(assign):
+        users = _extract_first_accept_users(assign)
+        status = assign.get("Status")
+        first_accept_deadline = _format_datetime(assign.get("FirstAcceptDeadline"))
+        label = "FirstAccept"
+        if status:
+            label += f" [{status}]"
+        if users:
+            label += f": {', '.join(users)}"
+        if first_accept_deadline:
+            label += f" (first accept: {first_accept_deadline})"
+        return label
+
+    user = assign.get("User") or {}
+    return user.get("AssigneeName", "N/A")
+
+
+def _project_user_guid_map(project_users):
+    guid_map = {}
+    for project_user in project_users or []:
+        user_info = project_user.get("User") or project_user
+        guid = str(user_info.get("UserGuid", ""))
+        if guid:
+            guid_map[guid] = user_info
+    return guid_map
+
+
 def _resolve_creator_user(pm, creator_user, cfg):
     """Resolve an omitted creator to the configured memoQ username's UserGuid."""
     if creator_user:
@@ -508,6 +638,7 @@ def project_docs(ctx, project_guid, status, detailed, as_json):
     子命令 / Subcommands:
         detailed    显示详细状态与分派信息 / Detailed status + assignments
         assign      交互式分派用户到文档 / Interactively assign user to document
+        firstaccept 自动化 FirstAccept 分派 / Scriptable FirstAccept assignment
         userassign  以表格形式列出文档分派 / List assignments in table view
         stats       文档级别统计 (异步) / Document-level statistics (async)
 
@@ -518,6 +649,7 @@ def project_docs(ctx, project_guid, status, detailed, as_json):
         memoq project docs -d <PROJECT_GUID>             # 含分派 / with assignments
         memoq project docs <PROJECT_GUID> detailed
         memoq project docs <PROJECT_GUID> assign
+        memoq project docs <PROJECT_GUID> firstaccept --doc <DOC_GUID> --user <USER1> --user <USER2> --role translator --deadline 2026-06-22 --first-accept-deadline 2026-06-10 --yes
         memoq project docs <PROJECT_GUID> userassign
         memoq project docs <PROJECT_GUID> stats <DOC_GUID>
     """
@@ -605,8 +737,6 @@ def docs_detailed(ctx, no_assignments, as_json):
 
         click.echo(f"\nFound {len(docs)} document(s):\n")
 
-        role_map = {0: "Translator", 1: "Reviewer1", 2: "Reviewer2"}
-
         for i, doc in enumerate(docs, 1):
             name = doc.get("DocumentName", "Unknown")
             guid = doc.get("DocumentGuid", "")
@@ -626,26 +756,16 @@ def docs_detailed(ctx, no_assignments, as_json):
             # Show assignment info if available
             if not no_assignments:
                 assignments_data = doc.get("UserAssignments") or {}
-                if isinstance(assignments_data, dict):
-                    assign_list = assignments_data.get(
-                        "TranslationDocumentDetailedAssignmentInfo", []
-                    ) or []
-                else:
-                    assign_list = assignments_data
+                assign_list = _extract_assignment_list(assignments_data)
                 if assign_list:
                     click.echo(f"     Assignments:")
                     for assign in assign_list:
                         role_id = assign.get("RoleId", -1)
-                        role_name = role_map.get(role_id, f"Role({role_id})")
-                        user = assign.get("User") or {}
-                        user_name = user.get("AssigneeName", "N/A")
-                        deadline = assign.get("Deadline")
-                        deadline_str = ""
-                        if deadline:
-                            if hasattr(deadline, "strftime"):
-                                deadline_str = deadline.strftime("%Y-%m-%d %H:%M")
-                            else:
-                                deadline_str = str(deadline)[:16]
+                        role_name = DOCUMENT_ROLE_NAMES.get(
+                            role_id, f"Role({role_id})"
+                        )
+                        user_name = _format_assignment_assignees(assign)
+                        deadline_str = _format_datetime(assign.get("Deadline"))
                         click.echo(f"       - {role_name}: {user_name}"
                                    + (f"  (deadline: {deadline_str})" if deadline_str else ""))
                 else:
@@ -818,6 +938,202 @@ def docs_assign(ctx):
         handle_api_error(e, ctx.obj.get("verbose", False))
 
 
+def _prompt_firstaccept_documents(pm, project_guid):
+    docs = pm.list_project_documents(project_guid)
+    if not docs:
+        raise click.ClickException("No documents in project")
+
+    click.echo(f"\n  Available documents ({len(docs)}):")
+    for i, doc in enumerate(docs, 1):
+        name = doc.get("DocumentName", "Unknown")
+        target_lang = doc.get("TargetLangCode", "")
+        click.echo(f"    {i}. {name} [{target_lang}]")
+
+    doc_choice = click.prompt(
+        "\n  Select document (enter number)",
+        type=click.IntRange(1, len(docs)),
+    )
+    return [str(docs[doc_choice - 1].get("DocumentGuid"))]
+
+
+def _prompt_firstaccept_users(project_users):
+    user_map = _project_user_guid_map(project_users)
+    if len(user_map) < 2:
+        raise click.ClickException(
+            "At least two project members are required for FirstAccept."
+        )
+
+    users = list(user_map.values())
+    click.echo(f"\n  Project members ({len(users)}):")
+    for i, user in enumerate(users, 1):
+        full_name = user.get("FullName", user.get("UserName", "N/A"))
+        user_name = user.get("UserName", "")
+        click.echo(f"    {i}. {full_name:<30} ({user_name})")
+
+    raw = click.prompt("\n  Select users (comma-separated numbers, min 2)")
+    choices = []
+    for item in str(raw).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            idx = int(item)
+        except ValueError:
+            raise click.ClickException("User selections must be numbers.")
+        if idx < 1 or idx > len(users):
+            raise click.ClickException(f"User selection out of range: {idx}")
+        choices.append(idx)
+
+    if len(set(choices)) < 2:
+        raise click.ClickException("At least two users must be selected.")
+    return [str(users[idx - 1].get("UserGuid")) for idx in choices]
+
+
+def _print_firstaccept_summary(
+    project_guid,
+    document_guids,
+    user_guids,
+    role_id,
+    deadline_dt,
+    first_accept_deadline_dt,
+):
+    click.echo("\n  FirstAccept assignment summary:")
+    click.echo(f"    Project:                {project_guid}")
+    click.echo(f"    Documents:              {len(document_guids)}")
+    click.echo(f"    Users:                  {len(user_guids)}")
+    click.echo(f"    Role:                   {DOCUMENT_ROLE_NAMES.get(role_id)}")
+    click.echo(f"    Deadline:               {_format_datetime(deadline_dt)}")
+    click.echo(
+        f"    FirstAccept deadline:   {_format_datetime(first_accept_deadline_dt)}"
+    )
+
+
+@project_docs.command("firstaccept")
+@click.option("--doc", "-d", "document_guid", multiple=True,
+              help="Document GUID to assign (repeatable)")
+@click.option("--user", "-u", "user_guid", multiple=True,
+              help="Project member user GUID for the FirstAccept pool (repeatable)")
+@click.option("--role", help="translator/reviewer1/reviewer2 or 0/1/2")
+@click.option("--deadline", help="Final assignment deadline (YYYY-MM-DD)")
+@click.option("--first-accept-deadline", help="FirstAccept deadline (YYYY-MM-DD)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+@click.pass_context
+def docs_firstaccept(
+    ctx,
+    document_guid,
+    user_guid,
+    role,
+    deadline,
+    first_accept_deadline,
+    yes,
+    as_json,
+):
+    """分派 FirstAccept 到项目文档 / Assign FirstAccept to document(s)
+
+    \b
+    示例 / Example:
+        memoq project docs <PROJECT_GUID> firstaccept \\
+          --doc <DOC_GUID> --user <USER_GUID_1> --user <USER_GUID_2> \\
+          --role translator --deadline 2026-06-22 \\
+          --first-accept-deadline 2026-06-10 --yes
+    """
+    project_guid = ctx.obj["project_guid"]
+
+    try:
+        pm = ProjectManager()
+
+        document_guids = [str(guid) for guid in document_guid if guid]
+        if not document_guids:
+            document_guids = _prompt_firstaccept_documents(pm, project_guid)
+
+        project_users = pm.list_project_users(project_guid)
+        user_map = _project_user_guid_map(project_users)
+
+        user_guids = [str(guid) for guid in user_guid if guid]
+        if not user_guids:
+            user_guids = _prompt_firstaccept_users(project_users)
+
+        if len(set(user_guids)) < 2:
+            raise click.ClickException("At least two --user values are required.")
+
+        missing_users = [guid for guid in user_guids if guid not in user_map]
+        if missing_users:
+            raise click.ClickException(
+                "User(s) are not project members: "
+                + ", ".join(missing_users)
+                + f". Add them first with: memoq project users {project_guid} assign"
+            )
+
+        if role is None:
+            role = click.prompt(
+                "Role (translator/reviewer1/reviewer2)",
+                default="translator",
+            )
+        role_id = _parse_document_role(role)
+
+        if deadline is None:
+            deadline = click.prompt("Deadline (YYYY-MM-DD)")
+        deadline_dt = _parse_deadline(deadline)
+        if deadline_dt is None:
+            raise click.ClickException("Deadline is required.")
+
+        if first_accept_deadline is None:
+            first_accept_deadline = click.prompt(
+                "FirstAccept deadline (YYYY-MM-DD)"
+            )
+        first_accept_deadline_dt = _parse_deadline(first_accept_deadline)
+        if first_accept_deadline_dt is None:
+            raise click.ClickException("FirstAccept deadline is required.")
+
+        if not yes:
+            _print_firstaccept_summary(
+                project_guid,
+                document_guids,
+                user_guids,
+                role_id,
+                deadline_dt,
+                first_accept_deadline_dt,
+            )
+            if not click.confirm("\n  Confirm FirstAccept assignment?", default=False):
+                click.echo("  Cancelled.")
+                return
+
+        result = pm.set_translation_document_first_accept_assignments(
+            project_guid=project_guid,
+            document_guids=document_guids,
+            user_guids=user_guids,
+            role=role_id,
+            deadline=deadline_dt,
+            first_accept_deadline=first_accept_deadline_dt,
+            throw_fault=True,
+        )
+
+        if as_json:
+            output_json(result)
+            return
+
+        _print_firstaccept_summary(
+            project_guid,
+            document_guids,
+            user_guids,
+            role_id,
+            deadline_dt,
+            first_accept_deadline_dt,
+        )
+        click.echo("\n  Results:")
+        if not result:
+            click.echo("    (no result items returned)")
+        for item in result:
+            doc_guid = item.get("DocumentGuid", "N/A")
+            error_code = item.get("ErrorCode")
+            status = "OK" if not error_code else f"ERROR: {error_code}"
+            click.echo(f"    - {doc_guid}: {status}")
+
+    except Exception as e:
+        handle_api_error(e, ctx.obj.get("verbose", False))
+
+
 @project_docs.command("userassign")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 @click.pass_context
@@ -852,8 +1168,6 @@ def docs_userassign(ctx, as_json):
             click.echo("No document assignments found")
             return
 
-        role_map = {0: "Translator", 1: "Reviewer1", 2: "Reviewer2"}
-
         # Build table data: one row per document
         rows = []
         for doc_assign in assignments:
@@ -872,29 +1186,15 @@ def docs_userassign(ctx, as_json):
             }
 
             assignments_data = doc_assign.get("Assignments") or {}
-            if isinstance(assignments_data, dict):
-                assign_list = assignments_data.get("TranslationDocumentDetailedAssignmentInfo") or []
-            else:
-                assign_list = assignments_data
+            assign_list = _extract_assignment_list(assignments_data)
             for assign_info in assign_list:
                 role_id = assign_info.get("RoleId", -1)
-                role_name = role_map.get(role_id)
+                role_name = DOCUMENT_ROLE_NAMES.get(role_id)
                 if not role_name:
                     continue
 
-                deadline = assign_info.get("Deadline")
-                deadline_str = ""
-                if deadline:
-                    if hasattr(deadline, "strftime"):
-                        deadline_str = deadline.strftime("%Y-%m-%d %H:%M")
-                    else:
-                        deadline_str = str(deadline)[:16]
-
-                # Get user info from single user assignment
-                user = assign_info.get("User")
-                user_name = ""
-                if user:
-                    user_name = user.get("AssigneeName", "")
+                deadline_str = _format_datetime(assign_info.get("Deadline"))
+                user_name = _format_assignment_assignees(assign_info)
 
                 if role_name == "Translator":
                     row["Translator"] = user_name
