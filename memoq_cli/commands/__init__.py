@@ -10,5 +10,6 @@ from .tb import tb
 from .template import template
 from .resource import resource
 from .callback import callback
+from .user import user
 
-__all__ = ["project", "file", "tm", "tb", "template", "resource", "callback"]
+__all__ = ["project", "file", "tm", "tb", "template", "resource", "callback", "user"]

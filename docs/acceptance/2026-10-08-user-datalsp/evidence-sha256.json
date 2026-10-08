@@ -1,0 +1,11 @@
+{
+  "cases.jsonl": "19f98e108948c580d69d68df8317ab505435f45ee810673ecae9b16e30926b18",
+  "initial-run/cases.jsonl": "c8935ecb5f36057379cbfd3840b40bec52869b1bde55f690bbcc50809d047769",
+  "initial-run/regression.json": "74419104265a6cbd496b29066a29ec5f9b9405fc9e12c01f69c9d98021ea1abd",
+  "initial-run/report.md": "56acd0104783cd7ba3d83f894fe732b89ae899d00405fd310f46dcaa48dfe6fb",
+  "initial-run/run.json": "0d9df15e31ea3d9f4b3da9d145ccdef028507fa8b4e3cdcb75ef9a614a2da1f5",
+  "initial-run/update-diagnostic.json": "101a4e0522263d051fc8b5c56791ce1760a8032cddfb5806199823cc3aa52939",
+  "regression.json": "10c560b05a40f9d817d65cfca48ece073b49cfd99c819e5945f89c151fa30af9",
+  "report.md": "fcd83588cf8c607a51970dee806701ef841eb434fcc9e804cbd5c5dd45bdb0a0",
+  "run.json": "f5d39d6450207e67a6739bb6737ad93881c3e3cdb095d58636637a0dd9ff4f21"
+}

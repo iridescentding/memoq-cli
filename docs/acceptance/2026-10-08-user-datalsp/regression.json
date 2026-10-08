@@ -1,0 +1,12 @@
+{
+  "command": "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python -m pytest -m 'not integration' -q",
+  "result": "105 passed, 1 deselected",
+  "exit_code": 0,
+  "python": "3.13.14",
+  "click": "8.3.1",
+  "zeep": "4.3.2",
+  "pytest": "9.0.2",
+  "base_git_commit": "eaa5bc127d20062aea1c9fcf7f76bfea9c6cc7fa",
+  "branch": "codex/user-management",
+  "scope": "isolated origin/main-based checkout; no FirstAccept or TB work included"
+}

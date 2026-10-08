@@ -1,0 +1,15 @@
+{
+  "sent": {
+    "UserGuid": "78cdbe90-2417-4385-a60e-c10dc78b05d4",
+    "UserName": "cli_diag_20261008213259r",
+    "FullName": "Diagnostic updated",
+    "EmailAddress": "diag@example.invalid"
+  },
+  "readback": {
+    "UserGuid": "78cdbe90-2417-4385-a60e-c10dc78b05d4",
+    "UserName": "cli_diag_20261008213259",
+    "FullName": "Diagnostic updated",
+    "EmailAddress": "diag@example.invalid"
+  },
+  "cleanup_verified": true
+}

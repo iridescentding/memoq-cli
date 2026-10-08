@@ -1,0 +1,760 @@
+{
+  "status": "FAIL",
+  "started": "2026-10-08T21:29:30+08:00",
+  "ended": "2026-10-08T21:31:41+08:00",
+  "host": "https://memoq.datalsp.com",
+  "port": 8081,
+  "api_version": "12.5.20",
+  "security_endpoint": "https://memoq.datalsp.com:8081/memoqservices/Security/SecurityService",
+  "passed": 18,
+  "total": 25,
+  "fixtures": {
+    "6137d200-a3a0-4311-8d81-b3bd8cc3cb43": "cli_uat_202610082129305957",
+    "6ce901bf-3fb9-4d6f-a952-fc8f29fd0604": "cli_uat2_202610082129305957"
+  },
+  "cleanup": {
+    "fixture_count": 2,
+    "remaining_fixture_count": 0,
+    "baseline_user_count": 133,
+    "final_user_count": 133,
+    "changed_or_missing_baseline_count": 0,
+    "unexpected_new_user_count": 0,
+    "config_file_unchanged": true
+  },
+  "source_sha256": {
+    "memoq_cli/commands/user.py": "bec5133c80edfcedf901759ee14aaca000a0fc5531289d96c4c75d6ca58f2cce",
+    "memoq_cli/wsapi/user.py": "2f6906396f414fc18201161a920fea065c6556d0a3a11b57575e0c727617be25",
+    "memoq_cli/cli.py": "8a2f83cf59b90dfecde512c4e5f7590fde60e82e4af39275025f2e34d9b0a7c4",
+    "memoq_cli/commands/__init__.py": "66a25f752152e4842bc2f2adafe31c69747b3eb566402158a117bde957b4fb83",
+    "scripts/accept_user_management.py": "3945e21318a4662eba547d6066452d05a9f1ac7db7567d9b31efb974e5500324"
+  },
+  "cases": [
+    {
+      "id": "ENV01",
+      "title": "真实服务器版本、端点与用户基线",
+      "started": "2026-10-08T21:29:30+08:00",
+      "commands": [],
+      "evidence": {
+        "api_version": "12.5.20",
+        "security_endpoint": "https://memoq.datalsp.com:8081/memoqservices/Security/SecurityService",
+        "existing_user_count": 133
+      },
+      "status": "PASS",
+      "duration_seconds": 14.247
+    },
+    {
+      "id": "LIST01",
+      "title": "listusers JSON 与 API 数量一致且无密码字段",
+      "started": "2026-10-08T21:29:44+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "listusers",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output_sha256": "7701ce2955087d530cd90217d98dc55c21363b60a7b7d7001ed687fd6acbaca1"
+        }
+      ],
+      "evidence": {
+        "total_count": 133,
+        "fixture_users": [],
+        "credential_fields_absent": true
+      },
+      "status": "PASS",
+      "duration_seconds": 7.681
+    },
+    {
+      "id": "ADD01",
+      "title": "隐藏输入密码创建用户，回读全部资料",
+      "started": "2026-10-08T21:29:52+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "add",
+            "--username",
+            "cli_uat_202610082129305957",
+            "--json",
+            "--full-name",
+            "CLI 用户管理验收",
+            "--email",
+            "cli-uat@example.invalid",
+            "--language-pairs",
+            "eng#zho-CN;eng#ger",
+            "--address",
+            "Acceptance address",
+            "--phone",
+            "000-0000",
+            "--mobile",
+            "000-0001"
+          ],
+          "exit_code": 0,
+          "output": "Password: \nRepeat for confirmation: \n{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"UserName\": \"cli_uat_202610082129305957\"\n}"
+        }
+      ],
+      "evidence": {
+        "user": {
+          "Address": "Acceptance address",
+          "EmailAddress": "cli-uat@example.invalid",
+          "FullName": "CLI 用户管理验收",
+          "IsDisabled": false,
+          "IsSubvendorManager": false,
+          "LTEmailAddress": null,
+          "LTFullName": null,
+          "LTUsername": null,
+          "LanguagePairs": "eng#zho-CN;eng#ger",
+          "MergeType": 2,
+          "MobilePhoneNumber": "000-0001",
+          "PackageWorkflowType": "Online",
+          "PhoneNumber": "000-0000",
+          "SecondarySID": null,
+          "UserGuid": "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+          "UserName": "cli_uat_202610082129305957"
+        },
+        "groups": [],
+        "password_hidden": true
+      },
+      "status": "PASS",
+      "duration_seconds": 5.946
+    },
+    {
+      "id": "PWD01",
+      "title": "创建密码可真实登录并退出会话",
+      "started": "2026-10-08T21:29:58+08:00",
+      "commands": [],
+      "evidence": {
+        "login": true
+      },
+      "status": "PASS",
+      "duration_seconds": 1.647
+    },
+    {
+      "id": "ADD02",
+      "title": "重复用户名被拒绝且用户列表不变",
+      "started": "2026-10-08T21:29:59+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "add",
+            "--username",
+            "cli_uat_202610082129305957",
+            "--password",
+            "<redacted>",
+            "--json"
+          ],
+          "exit_code": 1,
+          "output": "Error: 已存在一个登录名（“cli_uat_202610082129305957”）相同的用户。"
+        }
+      ],
+      "evidence": {
+        "user_list_unchanged": true
+      },
+      "status": "PASS",
+      "duration_seconds": 8.093
+    },
+    {
+      "id": "UPD01",
+      "title": "更新用户名与全部资料，原密码仍可登录",
+      "started": "2026-10-08T21:30:08+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--username",
+            "cli_uat_202610082129305957r",
+            "--full-name",
+            "CLI 验收更新",
+            "--email",
+            "updated@example.invalid",
+            "--language-pairs",
+            "zho-CN#eng",
+            "--address",
+            "Updated address",
+            "--phone",
+            "000-0002",
+            "--mobile",
+            "000-0003",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Updated\": true\n}"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Profile update mismatch",
+      "duration_seconds": 6.065
+    },
+    {
+      "id": "UPD02",
+      "title": "清空邮箱，保留其余字段及密码",
+      "started": "2026-10-08T21:30:14+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--email",
+            ""
+          ],
+          "exit_code": 0,
+          "output": "Done: User updated: 6137d200-a3a0-4311-8d81-b3bd8cc3cb43"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Login returned an empty session",
+      "duration_seconds": 6.0
+    },
+    {
+      "id": "UPD03",
+      "title": "禁用用户并验证登录被拒绝",
+      "started": "2026-10-08T21:30:20+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--disabled",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Updated\": true\n}"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Login returned an empty session",
+      "duration_seconds": 6.523
+    },
+    {
+      "id": "LIST02",
+      "title": "JSON 列表包含禁用用户",
+      "started": "2026-10-08T21:30:26+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "listusers",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output_sha256": "31d1b79387c79285f8282f7fd0dd428a560dbcaa8f012fcfc1f12c3b8d09b15b"
+        }
+      ],
+      "evidence": {
+        "disabled_fixture_included": true
+      },
+      "status": "PASS",
+      "duration_seconds": 6.821
+    },
+    {
+      "id": "LIST03",
+      "title": "文本列表展示禁用用户与状态",
+      "started": "2026-10-08T21:30:33+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "listusers"
+          ],
+          "exit_code": 0,
+          "output_sha256": "129cec3a51a8f38d7eff10d9857273be73c1edcd704ace5001d71faac7a8be2e"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Text list omitted disabled fixture",
+      "duration_seconds": 6.514
+    },
+    {
+      "id": "UPD04",
+      "title": "启用用户并验证登录恢复",
+      "started": "2026-10-08T21:30:39+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--enabled",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Updated\": true\n}"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Login returned an empty session",
+      "duration_seconds": 8.266
+    },
+    {
+      "id": "UPD05",
+      "title": "隐藏输入重置密码，新密码成功、旧密码失败",
+      "started": "2026-10-08T21:30:48+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--reset-password"
+          ],
+          "exit_code": 0,
+          "output": "New password: \nRepeat for confirmation: \nDone: User updated: 6137d200-a3a0-4311-8d81-b3bd8cc3cb43"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Login returned an empty session",
+      "duration_seconds": 7.225
+    },
+    {
+      "id": "UPD06",
+      "title": "显式参数更新密码并验证登录",
+      "started": "2026-10-08T21:30:55+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--password",
+            "<redacted>",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Updated\": true\n}"
+        }
+      ],
+      "evidence": {},
+      "status": "FAIL",
+      "error": "AssertionError: Login returned an empty session",
+      "duration_seconds": 6.045
+    },
+    {
+      "id": "UPD07",
+      "title": "无更新字段、空密码及冲突参数均被拒绝",
+      "started": "2026-10-08T21:31:01+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user update [OPTIONS] USER_GUID\nTry 'cli user update --help' for help.\n\nError: Specify at least one user field to update"
+        },
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--password",
+            "<redacted>"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user update [OPTIONS] USER_GUID\nTry 'cli user update --help' for help.\n\nError: Invalid value for --password: must not be empty"
+        },
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--password",
+            "<redacted>",
+            "--reset-password"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user update [OPTIONS] USER_GUID\nTry 'cli user update --help' for help.\n\nError: Use either --password or --reset-password"
+        }
+      ],
+      "evidence": {
+        "state_unchanged": true
+      },
+      "status": "PASS",
+      "duration_seconds": 0.58
+    },
+    {
+      "id": "PM01",
+      "title": "setpm 添加 PM 组并保留现有组",
+      "started": "2026-10-08T21:31:02+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "setpm",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Role\": \"PM\",\n  \"GroupGuid\": \"00000000-0000-0000-0000-000000000002\"\n}"
+        }
+      ],
+      "evidence": {
+        "groups_before": [],
+        "groups_after": [
+          "00000000-0000-0000-0000-000000000002"
+        ],
+        "existing_groups_preserved": true,
+        "repeat": false
+      },
+      "status": "PASS",
+      "duration_seconds": 5.935
+    },
+    {
+      "id": "PM02",
+      "title": "重复 setpm 保持组成员关系不变",
+      "started": "2026-10-08T21:31:08+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "setpm",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Role\": \"PM\",\n  \"GroupGuid\": \"00000000-0000-0000-0000-000000000002\"\n}"
+        }
+      ],
+      "evidence": {
+        "groups_before": [
+          "00000000-0000-0000-0000-000000000002"
+        ],
+        "groups_after": [
+          "00000000-0000-0000-0000-000000000002"
+        ],
+        "existing_groups_preserved": true,
+        "repeat": true
+      },
+      "status": "PASS",
+      "duration_seconds": 5.087
+    },
+    {
+      "id": "TM01",
+      "title": "settm 添加译员组并保留 PM 等组",
+      "started": "2026-10-08T21:31:13+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "settm",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43"
+          ],
+          "exit_code": 0,
+          "output": "Done: User 6137d200-a3a0-4311-8d81-b3bd8cc3cb43 is a Translator (other groups preserved)"
+        }
+      ],
+      "evidence": {
+        "groups_before": [
+          "00000000-0000-0000-0000-000000000002"
+        ],
+        "groups_after": [
+          "00000000-0000-0000-0000-000000000002",
+          "00000000-0000-0000-0000-000000000003"
+        ],
+        "existing_groups_preserved": true,
+        "repeat": false
+      },
+      "status": "PASS",
+      "duration_seconds": 5.426
+    },
+    {
+      "id": "TM02",
+      "title": "重复 settm 保持组成员关系不变",
+      "started": "2026-10-08T21:31:18+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "settm",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Role\": \"Translator\",\n  \"GroupGuid\": \"00000000-0000-0000-0000-000000000003\"\n}"
+        }
+      ],
+      "evidence": {
+        "groups_before": [
+          "00000000-0000-0000-0000-000000000002",
+          "00000000-0000-0000-0000-000000000003"
+        ],
+        "groups_after": [
+          "00000000-0000-0000-0000-000000000002",
+          "00000000-0000-0000-0000-000000000003"
+        ],
+        "existing_groups_preserved": true,
+        "repeat": true
+      },
+      "status": "PASS",
+      "duration_seconds": 5.214
+    },
+    {
+      "id": "VAL01",
+      "title": "四个按 GUID 操作的命令拒绝无效 GUID",
+      "started": "2026-10-08T21:31:23+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "not-a-guid"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user update [OPTIONS] USER_GUID\nTry 'cli user update --help' for help.\n\nError: Invalid value for 'USER_GUID': 'not-a-guid' is not a valid UUID."
+        },
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "delete",
+            "not-a-guid"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user delete [OPTIONS] USER_GUID\nTry 'cli user delete --help' for help.\n\nError: Invalid value for 'USER_GUID': 'not-a-guid' is not a valid UUID."
+        },
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "setpm",
+            "not-a-guid"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user setpm [OPTIONS] USER_GUID\nTry 'cli user setpm --help' for help.\n\nError: Invalid value for 'USER_GUID': 'not-a-guid' is not a valid UUID."
+        },
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "settm",
+            "not-a-guid"
+          ],
+          "exit_code": 2,
+          "output": "Usage: cli user settm [OPTIONS] USER_GUID\nTry 'cli user settm --help' for help.\n\nError: Invalid value for 'USER_GUID': 'not-a-guid' is not a valid UUID."
+        }
+      ],
+      "evidence": {
+        "invalid_guid_exit_code": 2
+      },
+      "status": "PASS",
+      "duration_seconds": 0.003
+    },
+    {
+      "id": "DEL01",
+      "title": "取消删除保留账号",
+      "started": "2026-10-08T21:31:23+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "delete",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43"
+          ],
+          "exit_code": 1,
+          "output": "Delete user 6137d200-a3a0-4311-8d81-b3bd8cc3cb43? [y/N]: n\nAborted!"
+        }
+      ],
+      "evidence": {
+        "user_retained": true
+      },
+      "status": "PASS",
+      "duration_seconds": 0.239
+    },
+    {
+      "id": "ADD03",
+      "title": "显式密码创建禁用用户，默认姓名正确",
+      "started": "2026-10-08T21:31:24+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "add",
+            "--username",
+            "cli_uat2_202610082129305957",
+            "--json",
+            "--password",
+            "<redacted>",
+            "--disabled"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6ce901bf-3fb9-4d6f-a952-fc8f29fd0604\",\n  \"UserName\": \"cli_uat2_202610082129305957\"\n}"
+        }
+      ],
+      "evidence": {
+        "user": {
+          "Address": null,
+          "EmailAddress": null,
+          "FullName": "cli_uat2_202610082129305957",
+          "IsDisabled": true,
+          "IsSubvendorManager": false,
+          "LTEmailAddress": null,
+          "LTFullName": null,
+          "LTUsername": null,
+          "LanguagePairs": null,
+          "MergeType": 2,
+          "MobilePhoneNumber": null,
+          "PackageWorkflowType": "Online",
+          "PhoneNumber": null,
+          "SecondarySID": null,
+          "UserGuid": "6ce901bf-3fb9-4d6f-a952-fc8f29fd0604",
+          "UserName": "cli_uat2_202610082129305957"
+        },
+        "groups": [],
+        "password_hidden": true
+      },
+      "status": "PASS",
+      "duration_seconds": 3.558
+    },
+    {
+      "id": "DEL02",
+      "title": "确认删除主账号并回读列表",
+      "started": "2026-10-08T21:31:27+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "delete",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--json"
+          ],
+          "exit_code": 0,
+          "output": "Delete user 6137d200-a3a0-4311-8d81-b3bd8cc3cb43? [y/N]: y\n{\n  \"UserGuid\": \"6137d200-a3a0-4311-8d81-b3bd8cc3cb43\",\n  \"Deleted\": true\n}"
+        }
+      ],
+      "evidence": {
+        "user_guid": "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+        "absent_from_list": true
+      },
+      "status": "PASS",
+      "duration_seconds": 5.697
+    },
+    {
+      "id": "DEL03",
+      "title": "-y 删除第二个账号并回读列表",
+      "started": "2026-10-08T21:31:33+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "delete",
+            "6ce901bf-3fb9-4d6f-a952-fc8f29fd0604",
+            "--json",
+            "-y"
+          ],
+          "exit_code": 0,
+          "output": "{\n  \"UserGuid\": \"6ce901bf-3fb9-4d6f-a952-fc8f29fd0604\",\n  \"Deleted\": true\n}"
+        }
+      ],
+      "evidence": {
+        "user_guid": "6ce901bf-3fb9-4d6f-a952-fc8f29fd0604",
+        "absent_from_list": true
+      },
+      "status": "PASS",
+      "duration_seconds": 3.198
+    },
+    {
+      "id": "ERR01",
+      "title": "更新已删除账号返回错误退出码",
+      "started": "2026-10-08T21:31:36+08:00",
+      "commands": [
+        {
+          "argv": [
+            "memoq",
+            "--quiet",
+            "user",
+            "update",
+            "6137d200-a3a0-4311-8d81-b3bd8cc3cb43",
+            "--full-name",
+            "deleted-user",
+            "--json"
+          ],
+          "exit_code": 1,
+          "output": "Error: 记录已被其它用户删除。"
+        }
+      ],
+      "evidence": {
+        "deleted_user_update_rejected": true
+      },
+      "status": "PASS",
+      "duration_seconds": 2.498
+    },
+    {
+      "id": "CLEAN01",
+      "title": "临时账号清理、其他账号及原配置核对",
+      "started": "2026-10-08T21:31:38+08:00",
+      "commands": [],
+      "evidence": {
+        "fixture_count": 2,
+        "remaining_fixture_count": 0,
+        "baseline_user_count": 133,
+        "final_user_count": 133,
+        "changed_or_missing_baseline_count": 0,
+        "unexpected_new_user_count": 0,
+        "config_file_unchanged": true
+      },
+      "status": "PASS",
+      "duration_seconds": 2.932
+    }
+  ]
+}

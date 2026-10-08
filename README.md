@@ -1,6 +1,6 @@
 # memoQ CLI
 
-A command-line tool for managing memoQ Server - handle projects, files, translation memories (TM), terminology bases (TB), project templates, and light resources from your terminal.
+A command-line tool for managing memoQ Server - handle users, projects, files, translation memories (TM), terminology bases (TB), project templates, and light resources from your terminal.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ This CLI is a thin local client over memoQ Server's WSAPI (SOAP) and RSAPI
 - **Idempotency:** `list` / `info` / `search` / `lookup` / `export` /
   `download` / `stats` are safe to retry. `create` / `delete` /
   `import` / `assign` / `upload` / `entry-*` mutate server state.
-- **Destructive commands** (`entry-delete`) prompt
+- **Destructive commands** (`entry-delete`, `user delete`) prompt
   by default; pass `-y` to skip in automation.
 
 ### Minimal automation recipe
@@ -60,6 +60,7 @@ $MEMOQ tm concordance <TM_GUID> "text" -n 20 --json
 |-------|----------|
 | top-level | `init`, `test`, `config`, `--version` |
 | `callback` | `serve`, `configure` |
+| `user` | `add`, `delete`, `update`, `listusers`, `setpm`, `settm` |
 | `project` | `list`, `info`, `new`, `createfromtemplate`, `update`, `stats`, `users`, `users assign`, `docs`, `docs detailed`, `docs stats`, `docs assign`, `docs userassign` |
 | `file` | `upload`, `download`, `import-xliff` |
 | `tm` | `list`, `info`, `concordance`, `lookup`, `metascheme`, `entry`, `entry-add`, `entry-update`, `entry-delete` |
@@ -273,12 +274,74 @@ memoq tm --help
 | `memoq init` | Create configuration file |
 | `memoq test` | Test server connection |
 | `memoq config` | View/edit configuration |
+| `memoq user` | Create, delete, update and list server users; assign PM/translator groups |
 | `memoq project` | Manage projects, users, and document assignments |
 | `memoq file` | Upload/download files |
 | `memoq tm` | Manage Translation Memories |
 | `memoq tb` | Manage Terminology Bases |
 | `memoq template` | Browse project templates |
 | `memoq resource` | Light Resource Service (import filters, list resources) |
+
+### User Commands
+
+```bash
+# Create a server user (password is requested with hidden input)
+memoq user add --username alice --full-name "Alice Zhang" --email alice@example.com
+memoq user add -u alice --language-pairs 'eng#zho-CN;eng#ger' --json
+
+# List all users, including disabled accounts
+memoq user listusers
+memoq user listusers --json
+
+# Update only the supplied fields; omitted fields and password are preserved
+memoq user update <USER_GUID> --full-name "Alice Zhang" --email new@example.com
+memoq user update <USER_GUID> --disabled
+memoq user update <USER_GUID> --enabled
+memoq user update <USER_GUID> --reset-password
+
+# Add the user to a built-in role group (preserves all existing group memberships)
+memoq user setpm <USER_GUID>
+memoq user settm <USER_GUID>
+
+# Delete a user (prompts for confirmation; -y skips the prompt)
+memoq user delete <USER_GUID>
+memoq user delete <USER_GUID> -y --json
+```
+
+`add` and `update` also accept `--address`, `--phone`, `--mobile`, and
+`--language-pairs`. Pass an empty string to clear a profile field, e.g.
+`--email ''`. `--password` accepts an explicit password for automation;
+interactive use should prefer the hidden prompt (`add`) or `--reset-password`
+(`update`) to keep passwords out of shell history. All six commands accept `--json`.
+Login usernames are immutable in memoQ: `--username` is available only on `add`.
+Use `update --full-name` to change the display name. This matches the
+[memoQ user management contract](https://docs.memoq.com/11-1/en/memoQWeb-help/mqw-add_edit-user.html).
+Passwords use the [memoQ WSAPI password hash protocol](https://docs.memoq.com/current/api-docs/wsapi/memoqservices/securityservice.session.html)
+and password fields are omitted from user list output.
+
+`setpm` uses the built-in ProjectManagers group and `settm` uses Translators
+(Internal translators). These [built-in groups have fixed GUIDs](https://docs.memoq.com/current/api-docs/wsapi/memoqservices/securityservice.ugp.html).
+Both commands add membership without removing any existing role, including PM,
+and do nothing if the user already belongs to the requested group. This sets
+server group membership; document/project assignment uses `project users assign`
+or `project docs assign`. The [Security API](https://docs.memoq.com/current/api-docs/wsapi/api/securityservice/MemoQServices.ISecurityService.html)
+deletes users by making them inactive so that they are no longer listed.
+
+#### Verified acceptance
+
+All six user commands were tested against datalsp memoQ **12.5.20** on
+2026-10-08: **26/26 live acceptance cases passed**, with independent server
+readback and password Login/Logout checks. The two temporary accounts were
+removed; the existing 133-user baseline was unchanged. The isolated branch
+passed **105 local tests** (one real-server integration test was deselected).
+See the [acceptance report and evidence](docs/acceptance/2026-10-08-user-datalsp/report.md),
+including the initial failed run and corrections.
+
+The opt-in runner is `scripts/accept_user_management.py`. It requires an explicit
+HTTPS `--host`, `--port`, a new `--output` directory and an API key on stdin.
+It creates and deletes two uniquely named accounts, keeps credentials in memory,
+and saves evidence without passwords or other users' profile data. Run
+`python scripts/accept_user_management.py --help` for invocation details.
 
 ### Project Commands
 
