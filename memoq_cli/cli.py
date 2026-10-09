@@ -13,7 +13,7 @@ import click
 
 from .config import get_config, Config, reset_config
 from .utils import setup_logging
-from .commands import project, file, tm, tb, template, resource, callback
+from .commands import project, file, tm, tb, template, resource, callback, user
 
 
 def _mask_secret(value: str) -> str:
@@ -96,6 +96,7 @@ cli.add_command(tb)
 cli.add_command(template)
 cli.add_command(resource)
 cli.add_command(callback)
+cli.add_command(user)
 
 
 @cli.command()
